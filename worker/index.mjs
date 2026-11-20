@@ -1,14 +1,20 @@
 import assets from 'open-play:assets';
 import { isSessionDate, pacificClock, sessionEnded } from '../public/assets/schedule.mjs';
+import { beginPagesLogin, handlePagesSession, pagesCors, pagesIdentity, pagesOrigin } from './pages-auth.mjs';
 
 function uclaAddress(email) {
   const match = /^([a-z0-9._+-]+)@(?:g\.)?ucla\.edu$/i.exec(email?.trim() ?? '');
   return match ? `${match[1].toLowerCase()}@ucla.edu` : null;
 }
 
-function viewerFor(request, env) {
+function siteIdentity(request) {
   const id = request.headers.get('oai-authenticated-user-id');
   const member = id ? uclaAddress(request.headers.get('oai-authenticated-user-email')) : null;
+  return { id, member };
+}
+
+function viewerFor(identity, env) {
+  const { id = null, member = null } = identity ?? {};
   const admins = (env.OPEN_PLAY_ADMINS ?? '').split(',').map(uclaAddress).filter(Boolean);
   return { id, member, admins: member && admins.includes(member) ? [...new Set(admins)] : null };
 }
@@ -72,12 +78,13 @@ async function signup(db, viewer, date, action) {
   return existing ? json(existing) : error('Sign-ups open after an admin approves this session.', 409);
 }
 
-async function handleSchedule(request, env, url) {
-  const viewer = viewerFor(request, env);
+async function handleSchedule(request, env, url, fromPages) {
+  const identity = fromPages ? await pagesIdentity(request, env.DB) : siteIdentity(request);
+  const viewer = viewerFor(identity, env);
   if (request.method === 'GET') return schedule(env.DB, viewer);
   if (request.method !== 'POST') return error('Method not allowed.', 405);
   if (!viewer.member) return error('Log in with your UCLA email to continue.', viewer.id ? 403 : 401);
-  if (request.headers.get('Origin') !== url.origin || !request.headers.get('content-type')?.startsWith('application/json')) {
+  if ((!fromPages && request.headers.get('Origin') !== url.origin) || !request.headers.get('content-type')?.startsWith('application/json')) {
     return error('This request is not allowed.', 403);
   }
 
@@ -100,11 +107,27 @@ async function handleSchedule(request, env, url) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (url.pathname === '/api/schedule') {
-      try { return await handleSchedule(request, env, url); } catch (exception) {
-        console.error('Schedule request failed:', exception.message);
-        return error('The schedule is temporarily unavailable. Try again shortly.', 503);
+    if (url.pathname === '/pages/login' && request.method === 'GET') {
+      try { return await beginPagesLogin(url, env.DB, siteIdentity(request)); } catch {
+        return error('Sign-in is temporarily unavailable. Try again shortly.', 503);
       }
+    }
+    const isSchedule = url.pathname === '/api/schedule';
+    const isPagesSession = url.pathname === '/api/pages/session' || url.pathname === '/api/pages/logout';
+    if (isSchedule || isPagesSession) {
+      const fromPages = request.headers.get('Origin') === pagesOrigin;
+      if (isPagesSession && !fromPages) return error('This request is not allowed.', 403);
+      if (fromPages && request.method === 'OPTIONS') return pagesCors(new Response(null, { status: 204 }));
+      let result;
+      try {
+        result = isSchedule
+          ? await handleSchedule(request, env, url, fromPages)
+          : await handlePagesSession(request, env.DB, url.pathname === '/api/pages/logout');
+      } catch (exception) {
+        console.error('Open play request failed:', exception.message);
+        result = error('Open Play is temporarily unavailable. Try again shortly.', 503);
+      }
+      return fromPages ? pagesCors(result) : result;
     }
     if (request.method !== 'GET' && request.method !== 'HEAD') return new Response(null, { status: 405 });
     const path = url.pathname === '/' ? '/index.html' : url.pathname;

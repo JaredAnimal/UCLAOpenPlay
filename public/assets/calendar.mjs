@@ -2,7 +2,7 @@ import {
   DAYS_PER_WEEK, OPEN_PLAY_DAYS, RESERVATION_LEAD_DAYS, SESSION_TIME,
   pacificClock, civilDate, addDays, currentWeek, isSessionDate, readSessions, reservationStatus, sessionEnded,
 } from './schedule.mjs';
-import { updateSchedule, signIn, signOut } from './schedule-api.mjs';
+import { bindAccountLink, fetchSchedule, updateSchedule } from './schedule-api.mjs';
 
 const calendar = document.querySelector('#days');
 const rangeTitle = document.querySelector('#range');
@@ -17,7 +17,6 @@ const weekday = new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: '
 const shortDate = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 const dayTitle = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
 const fullDate = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
-const scheduleURL = new URL('../api/schedule', import.meta.url);
 
 let clock = pacificClock();
 let { first: firstDate, selected: selectedDate } = currentWeek(clock.date);
@@ -114,9 +113,7 @@ function renderSignup(session) {
   if (sessionEnded(session.date, clock)) return;
   if (!viewer.member) {
     const link = element('a', viewer.signedIn ? 'Switch to a UCLA account to sign up' : 'Log in with UCLA email to sign up', 'signup-login');
-    const returnTo = encodeURIComponent(`/?date=${session.date}#schedule`);
-    link.href = `${(viewer.signedIn ? signOut : signIn).split('?')[0]}?return_to=${returnTo}`;
-    link.target = '_top';
+    bindAccountLink(link, viewer, session.date);
     detail.append(link);
     return;
   }
@@ -169,13 +166,11 @@ async function loadSchedule() {
     renderDetail();
   }
   try {
-    const response = await fetch(scheduleURL, { cache: 'no-cache' });
-    if (!response.ok) throw new Error(`Schedule request failed (${response.status}).`);
-    const data = await response.json();
+    const data = await fetchSchedule();
     sessions = readSessions(data.sessions);
     viewer = data.viewer;
     accountLink.textContent = viewer.signedIn ? 'Sign out' : 'Log in';
-    accountLink.href = viewer.signedIn ? signOut : signIn;
+    bindAccountLink(accountLink, viewer);
     accountLink.setAttribute('aria-label', viewer.signedIn ? 'Sign out' : 'Log in with a UCLA email');
     window.dispatchEvent(new CustomEvent('openplay-schedule', { detail: { viewer, sessions } }));
     loadState = 'ready';
@@ -226,5 +221,6 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 window.setInterval(updateClock, 60_000);
+bindAccountLink(accountLink, viewer);
 render();
 refresh();

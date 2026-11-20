@@ -11,7 +11,9 @@ The public calendar covers select Tuesday–Friday nights from 6–8 PM Pacific.
 
 ## Hosting and development
 
-The Site uses dispatch-owned ChatGPT sign-in and a D1 database. Set the `OPEN_PLAY_ADMINS` Site environment variable to a comma-separated list of UCLA email addresses. The application enforces the list on the server. Keep real admin addresses out of source control.
+GitHub Pages serves the static frontend from the root of `gh-pages`. To publish frontend changes from `main`, run `git subtree push --prefix=public origin gh-pages`. The frontend uses the existing Site Worker for the calendar API, ChatGPT sign-in, and the D1 database. Deploy Worker changes through Sites before publishing frontend changes that depend on them.
+
+Set the `OPEN_PLAY_ADMINS` Site environment variable to a comma-separated list of UCLA email addresses. The Worker enforces the list on the server. Keep real admin addresses out of source control.
 
 With Node.js 24 or later, run `npm ci` and `npm test`. The build writes the Worker and its deployment metadata to `dist/`. The tests use a disposable SQLite database and simulated identities. Hosted migrations are tracked under `migrations/`.
 

@@ -11,7 +11,7 @@ const contentTypes = {
 };
 const files = await readdir('public', { recursive: true, withFileTypes: true });
 const assets = {};
-for (const file of files.filter(entry => entry.isFile())) {
+for (const file of files.filter(entry => entry.isFile() && !entry.name.startsWith('.'))) {
   const path = join(file.parentPath, file.name);
   const extension = extname(file.name);
   const type = contentTypes[extension];
