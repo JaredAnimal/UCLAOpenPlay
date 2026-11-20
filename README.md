@@ -24,9 +24,11 @@ Picklebot (the court-booking script) tells the site about each tennis court it b
 
 1. Make a long random token, for example by running `node -e "console.log(crypto.randomUUID() + crypto.randomUUID())"`.
 2. In the Site's environment settings, store it as the secret `OPEN_PLAY_BOT_TOKEN`.
-3. Apply the new migration `migrations/0003_bot_hours_names.sql` to the D1 database.
-4. Deploy the Worker through Sites, then run `npm run publish:pages`.
+3. Deploy the Worker through Sites. Sites applies migration `0003_bot_hours_names` itself, like 0001 and 0002. Do not apply it by hand: a second run fails on duplicate columns.
+4. Then run `npm run publish:pages`. The Worker deploy (with its migration) goes first, the Pages publish second.
 5. Give the same token to picklebot with `node picklebot.js save-openplay-token`. Never put the token in a file or in chat.
+
+A bot post always sets that night to Confirmed at `Sunset Rec Tennis Court 2`. It overwrites a location an admin typed, re-confirms a night an admin declined, and sets the hours to the hours the bot booked (a 6 PM booking shows only 6–7 PM until the 7 PM court is booked too).
 
 The endpoint is `POST /api/bot/session` with the header `Authorization: Bearer <token>` and a JSON body like `{ "date": "2026-12-01", "hour": 18 }` (`hour` is the booked hour, 13 to 23). Without the secret set, the endpoint refuses every request.
 

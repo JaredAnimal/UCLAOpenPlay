@@ -101,9 +101,9 @@ h3 { font: 700 1.4rem/1.15 var(--display); }
 .day-number { font: 700 1.85rem/1 var(--display); }
 .day-time { margin-top: auto; font-size: .875rem; font-weight: 700; color: var(--blue-dark); }
 .day-time + .day-status { margin-top: .15rem; }
-.player-names { display: flex; flex-wrap: wrap; gap: .35rem; margin: 0; padding: 0; list-style: none; }
+.player-names { display: flex; flex-wrap: wrap; gap: .35rem; min-width: 0; margin: 0; padding: 0; list-style: none; }
 .player-names li[hidden] { display: none; }
-.player-names li { padding: .1rem .6rem; border: 1px solid var(--line); border-radius: 1rem; background: #f0f7ff; color: var(--ink); font-size: .9rem; font-weight: 600; line-height: 1.4rem; white-space: nowrap; }
+.player-names li { padding: .1rem .6rem; border: 1px solid var(--line); border-radius: 1rem; background: #f0f7ff; color: var(--ink); font-size: .9rem; font-weight: 600; line-height: 1.4rem; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .show-all { justify-self: start; min-height: 2.75rem; padding: 0; border: 0; background: none; font: inherit; font-weight: 700; color: var(--blue-dark); text-decoration: underline; text-underline-offset: .2em; cursor: pointer; }
 .day-status { width: 100%; margin-top: auto; padding: .15rem .1rem; border-radius: .25rem; font-size: .875rem; line-height: 1.2; font-weight: 700; text-align: center; }
 .confirmed { --status-bg: #e3f2ff; --status-ink: #184f7a; --status-dot: #2774ae; }

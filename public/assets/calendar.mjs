@@ -120,6 +120,8 @@ function renderSignup(session) {
     detail.append(names);
     const toggle = element('button', `Show all ${items.length}`, 'show-all');
     toggle.type = 'button';
+    names.id = 'player-names';
+    toggle.setAttribute('aria-controls', 'player-names');
     // Collapsed: whole names on the first two rows only (no clipped chips).
     const collapse = open => {
       items.forEach(item => { item.hidden = false; });
@@ -127,6 +129,7 @@ function renderSignup(session) {
       if (!open) items.forEach(item => { item.hidden = item.offsetTop > rows[1]; });
       toggle.hidden = rows.length <= 2;
       toggle.textContent = open ? 'Show less' : `Show all ${items.length}`;
+      toggle.setAttribute('aria-expanded', String(open));
     };
     let open = false;
     toggle.addEventListener('click', () => { open = !open; collapse(open); });
