@@ -4,7 +4,8 @@
   "description": "UCLA pickleball open-play calendar",
   "scripts": {
     "test": "npm run build && node --disable-warning=ExperimentalWarning --test scripts/*.test.mjs",
-    "build": "node scripts/build.mjs"
+    "build": "node scripts/build.mjs",
+    "publish:pages": "node scripts/publish-pages.mjs"
   },
   "type": "module",
   "devDependencies": {

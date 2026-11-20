@@ -11,7 +11,7 @@ The public calendar covers select Tuesday–Friday nights from 6–8 PM Pacific.
 
 ## Hosting and development
 
-GitHub Pages serves the static frontend from the root of `gh-pages`. To publish frontend changes from `main`, run `git subtree push --prefix=public origin gh-pages`. The frontend uses the existing Site Worker for the calendar API, ChatGPT sign-in, and the D1 database. Deploy Worker changes through Sites before publishing frontend changes that depend on them.
+GitHub Pages serves the static frontend from the root of `gh-pages`. To publish frontend changes from `main`, run `npm run publish:pages`. The frontend uses the existing Site Worker for the calendar API, ChatGPT sign-in, and the D1 database. Deploy Worker changes through Sites before publishing frontend changes that depend on them.
 
 Set the `OPEN_PLAY_ADMINS` Site environment variable to a comma-separated list of UCLA email addresses. The Worker enforces the list on the server. Keep real admin addresses out of source control.
 
