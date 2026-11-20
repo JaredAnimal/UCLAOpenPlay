@@ -1,6 +1,6 @@
 # UCLA Pickleball Open Play
 
-The public calendar shows Monday through Sunday. Mondays, Wednesdays, and Saturdays are reserved for tennis. Open play runs on select Tuesdays, Thursdays, and Fridays from 6–8 PM Pacific. Court Rules explains rotation, and **Pickleball Rules** opens the rules of the game.
+The public calendar shows Monday through Sunday. Mondays, Wednesdays, Fridays, and Saturdays are reserved for tennis. Open play runs on select Tuesdays and Thursdays from 6–8 PM Pacific. Unscheduled Tuesdays and Thursdays more than three days out appear tentative. Court Rules explains rotation, and **Pickleball Rules** opens the rules of the game.
 
 ## Proposals, approvals, and sign-ups
 
