@@ -6,6 +6,7 @@ CREATE TABLE sessions (
   reviewed_by TEXT,
   CHECK (status <> 'confirmed' OR (location IS NOT NULL AND length(trim(location)) > 0))
 );
+--> statement-breakpoint
 
 CREATE TABLE signups (
   date TEXT NOT NULL REFERENCES sessions(date) ON DELETE CASCADE,
