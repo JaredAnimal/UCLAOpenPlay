@@ -1,5 +1,5 @@
 import assets from 'open-play:assets';
-import { isSessionDate, pacificClock, sessionEnded } from '../public/assets/schedule.mjs';
+import { displayName, isSessionDate, pacificClock, sessionEnded, sessionTime } from '../public/assets/schedule.mjs';
 import { beginPagesLogin, handlePagesSession, pagesCors, pagesIdentity, pagesOrigin } from './pages-auth.mjs';
 import { uclaAddress } from './auth-primitives.mjs';
 import { finishGoogleLogin, finishGoogleLogout, googleEnabled, googleIdentity, startGoogleLogin } from './google-auth.mjs';
@@ -11,8 +11,8 @@ function siteIdentity(request) {
 }
 
 async function viewerFor(identity, env, directGoogle) {
-  const { id = null, member = null } = identity ?? {};
-  const viewer = { id, member, admins: null, authProvider: directGoogle ? 'google' : 'chatgpt' };
+  const { id = null, member = null, name = null } = identity ?? {};
+  const viewer = { id, member, name, admins: null, authProvider: directGoogle ? 'google' : 'chatgpt' };
   if (!member) return viewer;
   const initialAdmins = (env.OPEN_PLAY_ADMINS ?? '').split(',').map(uclaAddress).filter(Boolean);
   const { results } = await env.DB.prepare('SELECT email FROM admins').bind().all();
@@ -33,14 +33,20 @@ async function schedule(db, viewer) {
   const { results } = await db.prepare(`
     SELECT date, status, CASE WHEN status = 'confirmed' THEN location END AS location,
       CASE WHEN status = 'confirmed' THEN (SELECT COUNT(*) FROM signups WHERE signups.date = sessions.date) ELSE 0 END AS signupCount,
-      status = 'confirmed' AND EXISTS (SELECT 1 FROM signups WHERE signups.date = sessions.date AND member = ?) AS signedUp
+      status = 'confirmed' AND EXISTS (SELECT 1 FROM signups WHERE signups.date = sessions.date AND member = ?) AS signedUp,
+      start_hour, end_hour,
+      CASE WHEN ? AND status = 'confirmed' THEN (SELECT json_group_array(name) FROM (
+        SELECT COALESCE(name, substr(member, 1, instr(member, '@') - 1)) AS name FROM signups WHERE signups.date = sessions.date ORDER BY rowid
+      )) END AS players
     FROM sessions
     ORDER BY date
-  `).bind(viewer.member).all();
-  const sessions = results.map(({ location, signedUp, ...session }) => ({
+  `).bind(viewer.member, viewer.member ? 1 : 0).all();
+  const sessions = results.map(({ location, signedUp, start_hour, end_hour, players, ...session }) => ({
     ...session,
     ...(location ? { location } : {}),
     signedUp: Boolean(signedUp),
+    time: sessionTime(start_hour, end_hour),
+    ...(players ? { players: JSON.parse(players) } : {}),
   }));
   return json({ sessions, viewer: { signedIn: Boolean(viewer.id), member: Boolean(viewer.member), admins: viewer.admins, authProvider: viewer.authProvider } });
 }
@@ -81,10 +87,10 @@ async function signup(db, viewer, date, action) {
     return json({ date });
   }
   const inserted = await db.prepare(`
-    INSERT INTO signups (date, member)
-    SELECT date, ? FROM sessions WHERE date = ? AND status = 'confirmed'
+    INSERT INTO signups (date, member, name)
+    SELECT date, ?, ? FROM sessions WHERE date = ? AND status = 'confirmed'
     ON CONFLICT(date, member) DO NOTHING RETURNING date
-  `).bind(viewer.member, date).first();
+  `).bind(viewer.member, displayName(viewer.name, viewer.member), date).first();
   if (inserted) return json(inserted, 201);
   const existing = await db.prepare('SELECT date FROM signups WHERE date = ? AND member = ?').bind(date, viewer.member).first();
   return existing ? json(existing) : error('Sign-ups open after an admin approves this session.', 409);
@@ -107,7 +113,7 @@ async function handleCalendarApi(request, env, url, fromPages) {
   try { input = await request.json(); } catch { return error('Enter a valid request.', 400); }
   if (isAdminAction) return addAdmin(env.DB, viewer, input?.email);
   const { date, action, location } = input ?? {};
-  if (!isSessionDate(date)) return error('Choose a Tuesday or Thursday.', 400);
+  if (!isSessionDate(date)) return error('Choose a date.', 400);
   if (sessionEnded(date, pacificClock())) return error('This date has already passed.', 400);
 
   switch (action) {

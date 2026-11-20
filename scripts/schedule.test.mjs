@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { addDays, calendarStatus, currentWeek, isSessionDate, pacificClock, readSessions } from '../public/assets/schedule.mjs';
+import { addDays, calendarStatus, currentWeek, displayName, isSessionDate, pacificClock, readSessions, sessionTime } from '../public/assets/schedule.mjs';
+
+test('hours and names read the way the calendar shows them', () => {
+  assert.equal(sessionTime(18, 20), '6–8 PM');
+  assert.equal(sessionTime(18, 19), '6–7 PM');
+  assert.equal(sessionTime(11, 13), '11 AM–1 PM');
+  assert.equal(sessionTime(null, null), '6–8 PM');
+  assert.equal(displayName('Maya Lopez', 'maya@ucla.edu'), 'Maya L.');
+  assert.equal(displayName('Maya', 'maya@ucla.edu'), 'Maya');
+  assert.equal(displayName(null, 'player@ucla.edu'), 'player');
+});
 
 test('the visible week starts on Monday and selects today, including on weekends', () => {
   for (const selected of ['2026-11-23', '2026-11-27', '2026-11-28', '2026-11-29']) {

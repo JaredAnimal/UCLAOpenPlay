@@ -62,7 +62,7 @@ test('UCLA proposals stay tentative until an admin approves; approved sessions a
   assert.equal((await request(admin, { ...approval, location: ' ' })).status, 400);
   assert.equal((await request(admin, join)).status, 409);
   const anonymous = await (await request()).json();
-  assert.deepEqual(anonymous.sessions, [{ date, status: 'pending', signupCount: 0, signedUp: false }]);
+  assert.deepEqual(anonymous.sessions, [{ date, status: 'pending', signupCount: 0, signedUp: false, time: '6–8 PM' }]);
   assert.deepEqual(anonymous.viewer, { signedIn: false, member: false, admins: null, authProvider: 'chatgpt' });
   assert.deepEqual((await (await request(admin)).json()).viewer.admins, ['admin@ucla.edu']);
   assert.equal((await request(admin, approval)).status, 200);
@@ -71,12 +71,27 @@ test('UCLA proposals stay tentative until an admin approves; approved sessions a
   assert.equal((await request(student, join)).status, 201);
   assert.equal((await request({ id: 'student-alias', email: 'player@g.ucla.edu' }, join)).status, 200);
   const count = (await (await request()).json()).sessions[0];
-  assert.deepEqual(count, { date, status: 'confirmed', location: approval.location, signupCount: 1, signedUp: false });
+  assert.deepEqual(count, { date, status: 'confirmed', location: approval.location, signupCount: 1, signedUp: false, time: '6–8 PM' });
   assert.equal((await (await request(student)).json()).sessions[0].signedUp, true);
   assert.equal((await request(admin, { date, action: 'leave' })).status, 200);
   assert.equal((await (await request(student)).json()).sessions[0].signupCount, 1);
   assert.equal((await request(student, { date, action: 'leave' })).status, 200);
   assert.equal((await (await request(student)).json()).sessions[0].signupCount, 0);
+});
+
+test('any weekday can hold a session; only members see who signed up', async t => {
+  const request = setup(t);
+  const saturday = addDays(currentWeek(pacificClock().date).first, 12);
+  assert.equal((await request(student, { date: saturday, action: 'propose' })).status, 201);
+  assert.equal((await request(admin, { date: saturday, action: 'approve', location: 'Tennis Court 2' })).status, 200);
+  assert.equal((await request(student, { date: saturday, action: 'join' })).status, 201);
+  assert.equal((await request(student, { date: 'nope', action: 'join' })).status, 400);
+  const member = (await (await request(student)).json()).sessions[0];
+  assert.deepEqual(member.players, ['player']);
+  assert.equal(member.time, '6–8 PM');
+  const visitor = (await (await request()).json()).sessions[0];
+  assert.equal('players' in visitor, false);
+  assert.equal(visitor.signupCount, 1);
 });
 
 test('GitHub Pages redeems a one-time sign-in code and uses a separately revocable API session', async t => {
@@ -161,15 +176,15 @@ test('Google login checks the OAuth state, Google signature, and verified UCLA a
       .setIssuer('https://accounts.google.com').setAudience(clientId).setSubject('mock-google-id').setExpirationTime('2m').sign(privateKey);
     return Response.json({ id_token: idToken });
   });
-  const loginAttempt = async (path, email = 'Admin@g.ucla.edu', verified = true) => {
+  const loginAttempt = async (path, email = 'Admin@g.ucla.edu', verified = true, name) => {
     const start = await request({}, undefined, origin, { path });
     const google = new URL(start.headers.get('Location'));
     assert.equal(google.origin, 'https://accounts.google.com');
-    assert.equal(google.searchParams.get('scope'), 'openid email');
+    assert.equal(google.searchParams.get('scope'), 'openid email profile');
     assert.equal(google.searchParams.get('code_challenge_method'), 'S256');
     const cookie = start.headers.getSetCookie()[0].split(';')[0];
     assert.match(start.headers.getSetCookie()[0], /HttpOnly; Secure; SameSite=Lax/);
-    googleProfile = { nonce: google.searchParams.get('nonce'), email, email_verified: verified };
+    googleProfile = { nonce: google.searchParams.get('nonce'), email, email_verified: verified, ...(name && { name }) };
     const callback = '/auth/google/callback?' + new URLSearchParams({ state: google.searchParams.get('state'), code: 'google-code' });
     return { path: callback, cookie };
   };
@@ -208,4 +223,16 @@ test('Google login checks the OAuth state, Google signature, and verified UCLA a
   const code = new URLSearchParams(redirect.hash.slice(1)).get('code');
   const { token } = await (await request({}, { code, verifier }, pagesOrigin, { path: '/api/pages/session' })).json();
   assert.deepEqual((await (await request({}, undefined, pagesOrigin, { token })).json()).viewer.admins, ['admin@ucla.edu']);
+
+  const signIn = async (email, name) => {
+    const done = await request({}, undefined, origin, await loginAttempt('/auth/google/start', email, true, name));
+    return { cookie: done.headers.getSetCookie().find(value => value.startsWith('__Host-open-play-session=')).split(';')[0] };
+  };
+  const post = (who, body) => request({}, body, origin, who);
+  const host = await signIn('admin@ucla.edu');
+  const maya = await signIn('maya@ucla.edu', 'Maya Lopez');
+  assert.equal((await post(host, { date, action: 'propose' })).status, 201);
+  assert.equal((await post(host, { date, action: 'approve', location: 'Tennis Court 2' })).status, 200);
+  assert.equal((await post(maya, { date, action: 'join' })).status, 201);
+  assert.deepEqual((await (await request({}, undefined, origin, maya)).json()).sessions[0].players, ['Maya L.']);
 });

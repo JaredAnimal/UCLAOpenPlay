@@ -62,7 +62,7 @@ export async function startGoogleLogin(url, env) {
   const destination = new URL(authorizeUrl);
   destination.search = new URLSearchParams({
     client_id: env.GOOGLE_CLIENT_ID, redirect_uri: redirectUri, response_type: 'code',
-    scope: 'openid email', prompt: 'select_account', state, nonce,
+    scope: 'openid email profile', prompt: 'select_account', state, nonce,
     code_challenge: challenge, code_challenge_method: 'S256',
   });
   return redirectWithCookie(destination, stateCookie, state, stateLifetime);
@@ -96,7 +96,7 @@ export async function finishGoogleLogin(request, url, env) {
     if (payload.nonce !== attempt.nonce) return reject(attempt);
     const member = payload.email_verified === true ? uclaAddress(payload.email) : null;
     if (!member) return reject(attempt, 'ucla');
-    identity = { id: `google:${payload.sub}`, member };
+    identity = { id: `google:${payload.sub}`, member, name: typeof payload.name === 'string' ? payload.name : null };
   } catch {
     return reject(attempt);
   }
@@ -109,8 +109,8 @@ export async function finishGoogleLogin(request, url, env) {
   const session = randomCredential();
   await env.DB.batch([
     env.DB.prepare('DELETE FROM pages_sessions WHERE expires_at <= ?').bind(timestamp()),
-    env.DB.prepare(`INSERT INTO pages_sessions (credential_hash, user_id, member, expires_at, channel)
-      VALUES (?, ?, ?, ?, 'site')`).bind(await digest(session), identity.id, identity.member, timestamp() + sessionLifetime),
+    env.DB.prepare(`INSERT INTO pages_sessions (credential_hash, user_id, member, name, expires_at, channel)
+      VALUES (?, ?, ?, ?, ?, 'site')`).bind(await digest(session), identity.id, identity.member, identity.name, timestamp() + sessionLifetime),
   ]);
   const response = redirectWithCookie(calendarUrl(attempt), sessionCookie, session, sessionLifetime);
   response.headers.append('Set-Cookie', setCookie(stateCookie, '', 0));
@@ -120,7 +120,7 @@ export async function finishGoogleLogin(request, url, env) {
 export async function googleIdentity(request, db) {
   const session = credentialCookie(request, sessionCookie);
   if (!session) return null;
-  return db.prepare(`SELECT user_id AS id, member FROM pages_sessions
+  return db.prepare(`SELECT user_id AS id, member, name FROM pages_sessions
     WHERE credential_hash = ? AND channel = 'site' AND expires_at > ?`).bind(await digest(session), timestamp()).first();
 }
 

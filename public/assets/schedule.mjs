@@ -46,6 +46,26 @@ export function sessionEnded(date, clock) {
   return date < clock.date || (date === clock.date && clock.hour >= 20);
 }
 
+function hourLabel(hour) {
+  return { hour: hour % 12 || 12, meridiem: hour % 24 < 12 ? 'AM' : 'PM' };
+}
+
+export function sessionTime(startHour, endHour) {
+  if (!Number.isInteger(startHour) || !Number.isInteger(endHour)) return SESSION_TIME;
+  const start = hourLabel(startHour);
+  const end = hourLabel(endHour);
+  return start.meridiem === end.meridiem
+    ? `${start.hour}–${end.hour} ${end.meridiem}`
+    : `${start.hour} ${start.meridiem}–${end.hour} ${end.meridiem}`;
+}
+
+// Other members see "Maya L."; without a name, the part of the email before the @.
+export function displayName(name, email) {
+  const words = typeof name === 'string' ? name.trim().split(/\s+/).filter(Boolean) : [];
+  if (!words.length) return email.split('@')[0];
+  return words.length === 1 ? words[0] : `${words[0]} ${words.at(-1)[0]}.`;
+}
+
 export function currentWeek(date) {
   const weekday = civilDate(date).getUTCDay();
   const daysSinceMonday = (weekday - MONDAY + DAYS_PER_WEEK) % DAYS_PER_WEEK;

@@ -29,7 +29,7 @@ export async function pagesIdentity(request, db) {
   const hash = await bearerHash(request);
   if (!hash) return null;
   return db.prepare(`
-    SELECT user_id AS id, member FROM pages_sessions
+    SELECT user_id AS id, member, name FROM pages_sessions
     WHERE credential_hash = ? AND channel = 'pages' AND challenge IS NULL AND expires_at > ?
   `).bind(hash, timestamp()).first();
 }
@@ -56,8 +56,8 @@ export async function redirectToPages(db, challenge, identity, date) {
   const code = randomCredential();
   await db.batch([
     db.prepare('DELETE FROM pages_sessions WHERE expires_at <= ?').bind(timestamp()),
-    db.prepare('INSERT INTO pages_sessions (credential_hash, challenge, user_id, member, expires_at) VALUES (?, ?, ?, ?, ?)')
-      .bind(await digest(code), challenge, identity.id, identity.member, timestamp() + codeLifetime),
+    db.prepare('INSERT INTO pages_sessions (credential_hash, challenge, user_id, member, name, expires_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(await digest(code), challenge, identity.id, identity.member, identity.name ?? null, timestamp() + codeLifetime),
   ]);
   const destination = new URL(pagesUrl);
   if (isSessionDate(date)) destination.searchParams.set('date', date);
