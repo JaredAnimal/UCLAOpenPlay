@@ -1,6 +1,6 @@
 import {
-  DAYS_PER_WEEK, RESERVATION_LEAD_DAYS, SESSION_TIME, TENNIS_RESERVATION,
-  pacificClock, civilDate, addDays, currentWeek, isCalendarDate, isTennisDate, readSessions, reservationStatus, sessionEnded,
+  DAYS_PER_WEEK, RESERVATION_LEAD_DAYS, SESSION_TIME,
+  pacificClock, civilDate, addDays, currentWeek, isCalendarDate, readSessions, calendarStatus, sessionEnded,
 } from './schedule.mjs';
 import { bindAccountLink, fetchSchedule, updateSchedule } from './schedule-api.mjs';
 
@@ -44,9 +44,8 @@ function renderDays() {
   const days = [];
   for (let offset = 0; offset < DAYS_PER_WEEK; offset += 1) {
     const date = addDays(firstDate, offset);
-    const tennis = isTennisDate(date);
-    const status = tennis ? TENNIS_RESERVATION : reservationStatus(sessions.get(date), clock);
-    const button = element('button', '', tennis ? 'day tennis-day' : 'day');
+    const status = calendarStatus(date, sessions.get(date), clock);
+    const button = element('button', '', status?.style === 'tennis' ? 'day tennis-day' : 'day');
     button.type = 'button';
     button.dataset.date = date;
     button.setAttribute('aria-label', `${fullDate.format(civilDate(date))}${status ? `, ${status.label}` : ''}`);
@@ -69,8 +68,10 @@ function renderDetail() {
   detailDate.textContent = (sameYear ? dayTitle : fullDate).format(civilDate(selectedDate));
   detail.replaceChildren();
 
-  if (isTennisDate(selectedDate)) {
-    detail.append(element('span', TENNIS_RESERVATION.label, `status-pill ${TENNIS_RESERVATION.style}`));
+  const session = sessions.get(selectedDate);
+  const status = calendarStatus(selectedDate, session, clock);
+  if (status?.style === 'tennis') {
+    detail.append(element('span', status.label, `status-pill ${status.style}`));
     return;
   }
   if (loadState === 'loading') {
@@ -86,22 +87,20 @@ function renderDetail() {
     return;
   }
 
-  const session = sessions.get(selectedDate);
-  const status = reservationStatus(session, clock);
   if (!status) {
     detail.append(element('p', 'No session scheduled.'));
     return;
   }
 
   detail.append(element('span', status.label, `status-pill ${status.style}`));
-  if (session.status === 'confirmed') {
+  if (session?.status === 'confirmed') {
     const location = element('p', session.location);
     const time = element('strong', SESSION_TIME);
     detail.append(time, location);
     renderSignup(session);
   } else if (status.note) {
     detail.append(element('p', status.note));
-  } else if (session.status === 'pending') {
+  } else if (status.style === 'pending') {
     const checkDate = addDays(selectedDate, -RESERVATION_LEAD_DAYS);
     const time = element('strong', SESSION_TIME);
     const message = checkDate > clock.date
@@ -109,7 +108,7 @@ function renderDetail() {
       : 'We’re waiting for an admin to approve this session.';
     detail.append(time, element('p', message));
   }
-  if (session.note) detail.append(element('p', session.note));
+  if (session?.note) detail.append(element('p', session.note));
 }
 
 function renderSignup(session) {

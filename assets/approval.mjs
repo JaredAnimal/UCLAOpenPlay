@@ -73,7 +73,7 @@ proposalForm.addEventListener('submit', async event => {
   event.preventDefault();
   const date = proposalDate.value;
   if (!isSessionDate(date)) {
-    proposalFeedback.textContent = 'Choose a Tuesday, Thursday, or Friday.';
+    proposalFeedback.textContent = 'Choose a Tuesday or Thursday.';
     return;
   }
   const button = proposalForm.querySelector('button');

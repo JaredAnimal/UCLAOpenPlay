@@ -8,7 +8,8 @@ const SATURDAY = 6;
 export const DAYS_PER_WEEK = 7;
 export const RESERVATION_LEAD_DAYS = 3;
 export const SESSION_TIME = '6–8 PM Pacific';
-export const TENNIS_RESERVATION = { label: 'Reserved for tennis', style: 'tennis' };
+const TENNIS_RESERVATION = { label: 'Reserved for tennis', style: 'tennis' };
+const TENTATIVE_RESERVATION = { label: 'Tentative', style: 'pending' };
 
 const localClock = new Intl.DateTimeFormat('en-CA', {
   timeZone: TIME_ZONE,
@@ -39,7 +40,7 @@ export function addDays(date, offset) {
 }
 
 function isOpenPlayDay(weekday) {
-  return weekday === TUESDAY || weekday === THURSDAY || weekday === FRIDAY;
+  return weekday === TUESDAY || weekday === THURSDAY;
 }
 
 export function isCalendarDate(date) {
@@ -54,7 +55,7 @@ export function isSessionDate(date) {
 
 export function isTennisDate(date) {
   const weekday = civilDate(date).getUTCDay();
-  return weekday === MONDAY || weekday === WEDNESDAY || weekday === SATURDAY;
+  return weekday === MONDAY || weekday === WEDNESDAY || weekday === FRIDAY || weekday === SATURDAY;
 }
 
 export function sessionEnded(date, clock) {
@@ -77,8 +78,8 @@ export function readSessions(data) {
       throw new Error(`Invalid session date: ${date ?? '(missing)'}`);
     }
     const weekday = civilDate(date).getUTCDay();
-    if (weekday === WEDNESDAY) continue; // Older schedules could include Wednesday sessions.
-    if (!isOpenPlayDay(weekday)) throw new Error(`Open play is on Tuesdays, Thursdays, and Fridays: ${date}.`);
+    if (weekday === WEDNESDAY || weekday === FRIDAY) continue; // Older schedules could include these days.
+    if (!isOpenPlayDay(weekday)) throw new Error(`Open play is on Tuesdays and Thursdays: ${date}.`);
     if (sessions.has(date)) throw new Error(`Duplicate session date: ${date}`);
     if (!validStatuses.has(status)) throw new Error(`Invalid reservation status for ${date}.`);
     if (location !== undefined && (typeof location !== 'string' || !location.trim())) {
@@ -91,12 +92,16 @@ export function readSessions(data) {
   return sessions;
 }
 
-export function reservationStatus(session, clock) {
-  if (!session) return null;
+export function calendarStatus(date, session, clock) {
+  if (isTennisDate(date)) return TENNIS_RESERVATION;
+  if (!session) {
+    const beyondReservationWindow = date > addDays(clock.date, RESERVATION_LEAD_DAYS);
+    return isSessionDate(date) && beyondReservationWindow ? TENTATIVE_RESERVATION : null;
+  }
   if (session.status === 'confirmed') return { label: 'Confirmed', style: 'confirmed' };
   if (session.status === 'cancelled') return { label: 'Cancelled', style: 'cancelled' };
   if (sessionEnded(session.date, clock)) {
     return { label: 'Not confirmed', style: 'cancelled', note: 'A reservation was never posted for this session.' };
   }
-  return { label: 'Tentative', style: 'pending' };
+  return TENTATIVE_RESERVATION;
 }
