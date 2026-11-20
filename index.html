@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#003b5c">
+  <meta name="description" content="Check upcoming UCLA pickleball open-play nights, reservation status, and court rules.">
+  <title>Open Play | UCLA Pickleball</title>
+  <link rel="preload" href="assets/fonts/barlow-semi-condensed-700.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="assets/open-play.css">
+  <script type="module" src="assets/calendar.mjs"></script>
+  <script type="module" src="assets/approval.mjs"></script>
+  <script type="module" src="assets/rules.mjs"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="frame header-inner">
+      <a class="brand" href="./">UCLA Open Play</a>
+      <nav aria-label="Main navigation">
+        <a href="#schedule">Schedule</a>
+        <a href="#rules">Court Rules</a>
+        <a id="account-link" class="account-link" href="/signin-with-chatgpt?return_to=%2F" target="_top" aria-label="Log in with a UCLA email">Log in</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="hero">
+      <div class="frame hero-inner">
+        <h1>Pickleball <span>Open Play</span></h1>
+        <div class="hero-info">
+          <span>6–8 PM Pacific</span>
+          <span>Four courts</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="frame content">
+      <section id="schedule" aria-labelledby="schedule-title">
+        <div class="section-intro section-actions">
+          <div>
+            <h2 id="schedule-title">Schedule</h2>
+            <p>Open play is on select Tuesday–Friday nights. We find out if we have the court three days before play. Sessions stay tentative until an admin approves them.</p>
+          </div>
+          <button id="propose" class="rules-button" type="button" aria-haspopup="dialog" hidden>Propose a night</button>
+        </div>
+        <p id="schedule-feedback" class="feedback" role="status"></p>
+        <div class="schedule-layout">
+          <div class="calendar-panel panel">
+            <div class="calendar-toolbar">
+              <h3 id="range" aria-live="polite">Upcoming dates</h3>
+              <div class="calendar-nav" aria-label="Calendar navigation">
+                <button id="previous" type="button" class="nav-direction" aria-label="Previous week"><span aria-hidden="true"></span></button>
+                <button id="today" type="button">Today</button>
+                <button id="next" type="button" class="nav-direction next" aria-label="Next week"><span aria-hidden="true"></span></button>
+              </div>
+            </div>
+            <div id="days" class="days" aria-labelledby="range">
+              <p class="calendar-message">Loading schedule…</p>
+            </div>
+            <div class="legend" aria-label="Reservation statuses">
+              <span class="confirmed">Confirmed</span>
+              <span class="pending">Tentative</span>
+              <span class="cancelled">Cancelled</span>
+            </div>
+          </div>
+          <section class="date-panel panel" id="date-details" aria-labelledby="detail-date">
+            <p class="detail-label">Selected date</p>
+            <h3 id="detail-date">Upcoming dates</h3>
+            <div id="detail-content" class="detail-content" aria-live="polite" aria-atomic="true"></div>
+          </section>
+        </div>
+        <noscript><p>Enable JavaScript to view the open play schedule.</p></noscript>
+      </section>
+
+      <section id="approval" aria-labelledby="approval-title" hidden>
+        <div class="section-intro"><h2 id="approval-title">Session approvals</h2></div>
+        <div class="panel approval-panel">
+          <div>
+            <h3>Admins</h3>
+            <ul id="admins" class="admin-list"></ul>
+          </div>
+          <div>
+            <h3>Tentative nights</h3>
+            <div id="approval-list" class="approval-list"></div>
+            <p id="approval-feedback" class="feedback" role="status"></p>
+          </div>
+        </div>
+      </section>
+
+      <section id="rules" aria-labelledby="court-rules-title">
+        <div class="section-intro court-rules-intro">
+          <div>
+            <h2 id="court-rules-title">Court Rules</h2>
+            <p>Four pickleball courts share one reserved tennis court.</p>
+          </div>
+          <button id="show-rules" class="rules-button" type="button" aria-haspopup="dialog" aria-controls="pickleball-rules">Pickleball Rules</button>
+        </div>
+        <div class="court-layout panel" aria-label="Three social courts and one challenge court">
+          <div class="court"><div class="court-lines" aria-hidden="true"><span></span></div><span>Social 1</span></div>
+          <div class="court"><div class="court-lines" aria-hidden="true"><span></span></div><span>Social 2</span></div>
+          <div class="court"><div class="court-lines" aria-hidden="true"><span></span></div><span>Social 3</span></div>
+          <div class="court challenge"><div class="court-lines" aria-hidden="true"><span></span></div><span>Challenge</span></div>
+        </div>
+        <div class="rule-grid">
+          <article class="rule panel">
+            <h3>Social Courts</h3>
+            <p>All skill levels are welcome. When two or three paddles are waiting, one pair rotates off and the next two go on. When four or more paddles are waiting, all four players rotate off and the next four go on.</p>
+          </article>
+          <article class="rule panel">
+            <h3>Challenge Court</h3>
+            <p>Always two on, two off when a pair is waiting. Winners stay and the next two paddles go on, even when four or more are waiting.</p>
+          </article>
+          <article class="rule panel">
+            <h3>All Courts</h3>
+            <p>Put one paddle per player at the back of the queue for the court you want. Play doubles to 11, win by 2. Clear the court promptly after your game.</p>
+          </article>
+        </div>
+      </section>
+    </div>
+  </main>
+  <footer class="site-footer"><div class="frame">UCLA Pickleball Open Play</div></footer>
+
+  <dialog id="proposal" class="rules-dialog" aria-labelledby="proposal-title">
+    <header class="rules-heading">
+      <h2 id="proposal-title">Propose a night</h2>
+      <form method="dialog"><button class="rules-close">Close</button></form>
+    </header>
+    <form id="proposal-form" class="proposal-form">
+      <label>Date <input name="date" type="date" required autofocus></label>
+      <p>Choose a Tuesday–Friday night. The session will show as tentative until approved.</p>
+      <button class="rules-button" type="submit">Submit proposal</button>
+      <p id="proposal-feedback" class="feedback" role="status"></p>
+    </form>
+  </dialog>
+
+  <dialog id="pickleball-rules" class="rules-dialog" aria-labelledby="rules-title">
+    <header class="rules-heading">
+      <h2 id="rules-title">Pickleball Rules</h2>
+      <form method="dialog"><button class="rules-close" autofocus>Close</button></form>
+    </header>
+    <div class="rules-list">
+      <section>
+        <h3>Scoring</h3>
+        <p>Play doubles to 11, win by 2. Only the serving team scores. Before serving, call your team’s score first, the other team’s score second, and your server number last.</p>
+      </section>
+      <section>
+        <h3>Serving</h3>
+        <p>Serve diagonally from behind the baseline, past the kitchen line. Use an underhand volley serve or a drop serve. Only one player serves on the opening turn. After that, both partners get a turn before the serve goes to the other team.</p>
+      </section>
+      <section>
+        <h3>Two-bounce rule</h3>
+        <p>The serve must bounce on the receiving side, and the return must bounce on the serving side. After those two bounces, either team may volley.</p>
+      </section>
+      <section>
+        <h3>The kitchen</h3>
+        <p>You can step into the kitchen to hit a ball after it bounces. It’s a fault to touch the kitchen or its line during a volley, including when your momentum carries you in afterward.</p>
+      </section>
+      <section>
+        <h3>Line calls</h3>
+        <p>A ball touching a line is in, except a serve that touches the kitchen line. Call a ball out only when you clearly see it land outside the line.</p>
+      </section>
+    </div>
+  </dialog>
+</body>
+</html>
