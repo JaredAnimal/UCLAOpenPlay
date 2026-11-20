@@ -1,11 +1,8 @@
 import assets from 'open-play:assets';
 import { isSessionDate, pacificClock, sessionEnded } from '../public/assets/schedule.mjs';
 import { beginPagesLogin, handlePagesSession, pagesCors, pagesIdentity, pagesOrigin } from './pages-auth.mjs';
-
-function uclaAddress(email) {
-  const match = /^([a-z0-9._+-]+)@(?:g\.)?ucla\.edu$/i.exec(email?.trim() ?? '');
-  return match ? `${match[1].toLowerCase()}@ucla.edu` : null;
-}
+import { uclaAddress } from './auth-primitives.mjs';
+import { finishGoogleLogin, finishGoogleLogout, googleEnabled, googleIdentity, startGoogleLogin } from './google-auth.mjs';
 
 function siteIdentity(request) {
   const id = request.headers.get('oai-authenticated-user-id');
@@ -13,10 +10,15 @@ function siteIdentity(request) {
   return { id, member };
 }
 
-function viewerFor(identity, env) {
+async function viewerFor(identity, env, directGoogle) {
   const { id = null, member = null } = identity ?? {};
-  const admins = (env.OPEN_PLAY_ADMINS ?? '').split(',').map(uclaAddress).filter(Boolean);
-  return { id, member, admins: member && admins.includes(member) ? [...new Set(admins)] : null };
+  const viewer = { id, member, admins: null, authProvider: directGoogle ? 'google' : 'chatgpt' };
+  if (!member) return viewer;
+  const initialAdmins = (env.OPEN_PLAY_ADMINS ?? '').split(',').map(uclaAddress).filter(Boolean);
+  const { results } = await env.DB.prepare('SELECT email FROM admins').bind().all();
+  const admins = [...new Set([...initialAdmins, ...results.map(row => row.email)])].sort();
+  if (admins.includes(member)) viewer.admins = admins;
+  return viewer;
 }
 
 function json(value, status = 200) {
@@ -40,7 +42,17 @@ async function schedule(db, viewer) {
     ...(location ? { location } : {}),
     signedUp: Boolean(signedUp),
   }));
-  return json({ sessions, viewer: { signedIn: Boolean(viewer.id), member: Boolean(viewer.member), admins: viewer.admins } });
+  return json({ sessions, viewer: { signedIn: Boolean(viewer.id), member: Boolean(viewer.member), admins: viewer.admins, authProvider: viewer.authProvider } });
+}
+
+async function addAdmin(db, viewer, input) {
+  if (!viewer.admins) return error('Only admins can add other admins.', 403);
+  const email = uclaAddress(input);
+  if (!email) return error('Enter a UCLA email address.', 400);
+  if (!viewer.admins.includes(email)) {
+    await db.prepare('INSERT INTO admins (email, added_by) VALUES (?, ?) ON CONFLICT(email) DO NOTHING').bind(email, viewer.id).run();
+  }
+  return json({ email });
 }
 
 async function propose(db, viewer, date) {
@@ -78,10 +90,13 @@ async function signup(db, viewer, date, action) {
   return existing ? json(existing) : error('Sign-ups open after an admin approves this session.', 409);
 }
 
-async function handleSchedule(request, env, url, fromPages) {
-  const identity = fromPages ? await pagesIdentity(request, env.DB) : siteIdentity(request);
-  const viewer = viewerFor(identity, env);
-  if (request.method === 'GET') return schedule(env.DB, viewer);
+async function handleCalendarApi(request, env, url, fromPages) {
+  const directGoogle = googleEnabled(env);
+  const identity = fromPages ? await pagesIdentity(request, env.DB)
+    : directGoogle ? await googleIdentity(request, env.DB) : siteIdentity(request);
+  const viewer = await viewerFor(directGoogle && !identity?.id?.startsWith('google:') ? null : identity, env, directGoogle);
+  const isAdminAction = url.pathname === '/api/admins';
+  if (request.method === 'GET' && !isAdminAction) return schedule(env.DB, viewer);
   if (request.method !== 'POST') return error('Method not allowed.', 405);
   if (!viewer.member) return error('Log in with your UCLA email to continue.', viewer.id ? 403 : 401);
   if ((!fromPages && request.headers.get('Origin') !== url.origin) || !request.headers.get('content-type')?.startsWith('application/json')) {
@@ -90,6 +105,7 @@ async function handleSchedule(request, env, url, fromPages) {
 
   let input;
   try { input = await request.json(); } catch { return error('Enter a valid request.', 400); }
+  if (isAdminAction) return addAdmin(env.DB, viewer, input?.email);
   const { date, action, location } = input ?? {};
   if (!isSessionDate(date)) return error('Choose a Tuesday or Thursday.', 400);
   if (sessionEnded(date, pacificClock())) return error('This date has already passed.', 400);
@@ -107,21 +123,40 @@ async function handleSchedule(request, env, url, fromPages) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === '/auth/login' && request.method === 'GET') {
+      if (googleEnabled(env)) return Response.redirect(new URL(`/auth/google/start${url.search}`, url.origin));
+      const date = url.searchParams.get('date');
+      const returnTo = isSessionDate(date) ? `/?date=${date}#schedule` : '/';
+      return Response.redirect(new URL(`/signin-with-chatgpt?return_to=${encodeURIComponent(returnTo)}`, url.origin));
+    }
+    if (url.pathname.startsWith('/auth/google/') && googleEnabled(env)) {
+      try {
+        if (url.pathname === '/auth/google/start' && request.method === 'GET') return await startGoogleLogin(url, env);
+        if (url.pathname === '/auth/google/callback' && request.method === 'GET') return await finishGoogleLogin(request, url, env);
+        if (url.pathname === '/auth/google/logout' && request.method === 'POST' && request.headers.get('Origin') === url.origin) {
+          return await finishGoogleLogout(request, env.DB);
+        }
+      } catch {
+        return error('Google sign-in is temporarily unavailable. Try again shortly.', 503);
+      }
+      return error('This request is not allowed.', 403);
+    }
     if (url.pathname === '/pages/login' && request.method === 'GET') {
+      if (googleEnabled(env)) return Response.redirect(new URL(`/auth/google/start${url.search}`, url.origin));
       try { return await beginPagesLogin(url, env.DB, siteIdentity(request)); } catch {
         return error('Sign-in is temporarily unavailable. Try again shortly.', 503);
       }
     }
-    const isSchedule = url.pathname === '/api/schedule';
+    const isCalendarApi = url.pathname === '/api/schedule' || url.pathname === '/api/admins';
     const isPagesSession = url.pathname === '/api/pages/session' || url.pathname === '/api/pages/logout';
-    if (isSchedule || isPagesSession) {
+    if (isCalendarApi || isPagesSession) {
       const fromPages = request.headers.get('Origin') === pagesOrigin;
       if (isPagesSession && !fromPages) return error('This request is not allowed.', 403);
       if (fromPages && request.method === 'OPTIONS') return pagesCors(new Response(null, { status: 204 }));
       let result;
       try {
-        result = isSchedule
-          ? await handleSchedule(request, env, url, fromPages)
+        result = isCalendarApi
+          ? await handleCalendarApi(request, env, url, fromPages)
           : await handlePagesSession(request, env.DB, url.pathname === '/api/pages/logout');
       } catch (exception) {
         console.error('Open play request failed:', exception.message);

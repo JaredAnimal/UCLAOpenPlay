@@ -1,17 +1,10 @@
 import { pagesUrl } from '../public/assets/hosting.mjs';
 import { isSessionDate } from '../public/assets/schedule.mjs';
+import { credentialPattern, digest, randomCredential, timestamp } from './auth-primitives.mjs';
 
 export const pagesOrigin = new URL(pagesUrl).origin;
-const credentialPattern = /^[a-f0-9]{64}$/;
 const codeLifetime = 5 * 60;
 const sessionLifetime = 8 * 60 * 60;
-const timestamp = () => Math.floor(Date.now() / 1000);
-const hex = bytes => Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
-const randomCredential = () => hex(crypto.getRandomValues(new Uint8Array(32)));
-
-async function digest(value) {
-  return hex(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))));
-}
 
 function reply(data, status = 200) {
   return Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
@@ -37,7 +30,7 @@ export async function pagesIdentity(request, db) {
   if (!hash) return null;
   return db.prepare(`
     SELECT user_id AS id, member FROM pages_sessions
-    WHERE credential_hash = ? AND challenge IS NULL AND expires_at > ?
+    WHERE credential_hash = ? AND channel = 'pages' AND challenge IS NULL AND expires_at > ?
   `).bind(hash, timestamp()).first();
 }
 
@@ -56,6 +49,10 @@ export async function beginPagesLogin(url, db, identity) {
     });
   }
 
+  return redirectToPages(db, challenge, identity, date);
+}
+
+export async function redirectToPages(db, challenge, identity, date) {
   const code = randomCredential();
   await db.batch([
     db.prepare('DELETE FROM pages_sessions WHERE expires_at <= ?').bind(timestamp()),
@@ -72,7 +69,7 @@ export async function handlePagesSession(request, db, logout) {
   if (request.method !== 'POST') return reply({ error: 'Method not allowed.' }, 405);
   if (logout) {
     const hash = await bearerHash(request);
-    if (hash) await db.prepare('DELETE FROM pages_sessions WHERE credential_hash = ? AND challenge IS NULL').bind(hash).run();
+    if (hash) await db.prepare("DELETE FROM pages_sessions WHERE credential_hash = ? AND channel = 'pages' AND challenge IS NULL").bind(hash).run();
     return reply({ ok: true });
   }
   if (!request.headers.get('Content-Type')?.startsWith('application/json')) return reply({ error: 'Invalid sign-in request.' }, 400);
@@ -83,7 +80,7 @@ export async function handlePagesSession(request, db, logout) {
   const token = randomCredential();
   const row = await db.prepare(`
     UPDATE pages_sessions SET credential_hash = ?, challenge = NULL, expires_at = ?
-    WHERE credential_hash = ? AND challenge = ? AND expires_at > ? RETURNING user_id
+    WHERE credential_hash = ? AND channel = 'pages' AND challenge = ? AND expires_at > ? RETURNING user_id
   `).bind(await digest(token), timestamp() + sessionLifetime, await digest(code), await digest(verifier), timestamp()).first();
   return row ? reply({ token }) : reply({ error: 'This sign-in has expired. Try logging in again.' }, 401);
 }

@@ -41,20 +41,27 @@ function returnTo(date) {
   return date ? `/?date=${encodeURIComponent(date)}#schedule` : '/';
 }
 
-export function bindAccountLink(link, { signedIn }, date) {
-  const action = signedIn ? 'signout' : 'signin';
-  link.href = pages ? '#schedule' : `/${action}-with-chatgpt?return_to=${encodeURIComponent(returnTo(date))}`;
-  link.target = pages ? '_self' : '_top';
-  if (!pages) return;
+export function bindAccountLink(link, { signedIn, authProvider }, date) {
+  const googleLogout = !pages && signedIn && authProvider === 'google';
+  const dateQuery = date ? `?date=${encodeURIComponent(date)}` : '';
+  link.href = pages || googleLogout ? '#schedule' : signedIn
+    ? `/signout-with-chatgpt?return_to=${encodeURIComponent(returnTo(date))}` : `/auth/login${dateQuery}`;
+  link.target = pages || googleLogout ? '_self' : '_top';
+  link.onclick = null;
+  if (!pages && !googleLogout) return;
   link.onclick = async event => {
     event.preventDefault();
     if (signedIn) {
-      const token = sessionStorage.getItem(tokenKey);
-      sessionStorage.removeItem(tokenKey);
+      const token = pages ? sessionStorage.getItem(tokenKey) : null;
+      if (pages) sessionStorage.removeItem(tokenKey);
       try {
-        if (token) await json(await request('/api/pages/logout', { token, body: {} }));
-      } catch {
-        // The browser session is already cleared. An unreachable API session expires on its own.
+        if (googleLogout) await json(await request('/auth/google/logout', { body: {} }));
+        else if (token) await json(await request('/api/pages/logout', { token, body: {} }));
+      } catch (error) {
+        if (googleLogout) {
+          document.querySelector('#schedule-feedback').textContent = error.message;
+          return;
+        }
       }
       location.reload();
       return;
@@ -85,4 +92,8 @@ export async function fetchSchedule() {
 
 export async function updateSchedule(body) {
   return json(await request('/api/schedule', { token: pages ? sessionStorage.getItem(tokenKey) : null, body }));
+}
+
+export async function addAdmin(email) {
+  return json(await request('/api/admins', { token: pages ? sessionStorage.getItem(tokenKey) : null, body: { email } }));
 }

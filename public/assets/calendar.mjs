@@ -175,7 +175,7 @@ async function loadSchedule() {
     viewer = data.viewer;
     accountLink.textContent = viewer.signedIn ? 'Sign out' : 'Log in';
     bindAccountLink(accountLink, viewer);
-    accountLink.setAttribute('aria-label', viewer.signedIn ? 'Sign out' : 'Log in with a UCLA email');
+    accountLink.setAttribute('aria-label', viewer.signedIn ? 'Sign out' : viewer.authProvider === 'google' ? 'Log in with Google using a UCLA email' : 'Log in with a UCLA email');
     window.dispatchEvent(new CustomEvent('openplay-schedule', { detail: { viewer, sessions } }));
     loadState = 'ready';
   } catch (error) {
@@ -225,6 +225,13 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 window.setInterval(updateClock, 60_000);
+const loginUrl = new URL(window.location.href);
+if (loginUrl.searchParams.has('login_error')) {
+  feedback.textContent = loginUrl.searchParams.get('login_error') === 'ucla'
+    ? 'Use a Google account with a verified UCLA email.' : 'Google sign-in didn’t finish. Try again.';
+  loginUrl.searchParams.delete('login_error');
+  history.replaceState(null, '', loginUrl);
+}
 bindAccountLink(accountLink, viewer);
 render();
 refresh();

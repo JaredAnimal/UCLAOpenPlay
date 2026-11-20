@@ -1,5 +1,5 @@
 import { getSelectedDate, refresh, showDate } from './calendar.mjs';
-import { updateSchedule } from './schedule-api.mjs';
+import { addAdmin, updateSchedule } from './schedule-api.mjs';
 import { civilDate, isSessionDate, pacificClock, sessionEnded } from './schedule.mjs';
 
 const propose = document.querySelector('#propose');
@@ -12,6 +12,8 @@ const approval = document.querySelector('#approval');
 const approvalList = document.querySelector('#approval-list');
 const approvalFeedback = document.querySelector('#approval-feedback');
 const admins = document.querySelector('#admins');
+const adminForm = document.querySelector('#admin-form');
+const adminFeedback = document.querySelector('#admin-feedback');
 const dateLabel = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
 let displayedDates;
 
@@ -87,6 +89,23 @@ proposalForm.addEventListener('submit', async event => {
     scheduleFeedback.textContent = 'Proposal submitted. This night is tentative until approved.';
   } catch (error) {
     proposalFeedback.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+adminForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  const button = adminForm.querySelector('button');
+  button.disabled = true;
+  adminFeedback.textContent = '';
+  try {
+    const { email } = await addAdmin(adminForm.elements.email.value);
+    adminForm.reset();
+    await refresh({ afterCurrent: true });
+    adminFeedback.textContent = `${email} has admin access.`;
+  } catch (error) {
+    adminFeedback.textContent = error.message;
   } finally {
     button.disabled = false;
   }

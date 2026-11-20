@@ -15,6 +15,13 @@
       "when": 1795157330459,
       "tag": "0001_pages_login",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1795198771107,
+      "tag": "0002_google_auth_and_admins",
+      "breakpoints": true
     }
   ]
 }
