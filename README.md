@@ -1,28 +1,18 @@
 # UCLA Pickleball Open Play
 
-A standalone calendar for select Tuesday–Friday nights from 6–8 PM Pacific. The calendar layout draws from [UCLA Club Pickleball](https://github.com/JaredAnimal/UCLAPickleball). The Court Rules section describes open-play rotation, and its **Pickleball Rules** button opens the rules of the game.
+The public calendar covers select Tuesday–Friday nights from 6–8 PM Pacific. Court Rules explains rotation, and **Pickleball Rules** opens the rules of the game.
 
-## Update the schedule
+## Proposals, approvals, and sign-ups
 
-Edit [`dist/schedule.json`](dist/schedule.json). Enter one record per planned date using `YYYY-MM-DD` in Pacific time. Each session uses the same 6–8 PM slot. For example, a tentative night looks like this:
+- **Log in** with a ChatGPT account that uses your UCLA email address. Both `@ucla.edu` and the corresponding `@g.ucla.edu` address work.
+- Select **Propose a night** to add a tentative date. The calendar shows when to check back for confirmation, three days before play.
+- Admins use **Session approvals** to approve a tentative night with its reserved facility and court, or decline the proposal.
+- After approval, UCLA users can sign up or cancel their own sign-up from the selected date. The public calendar shows the number of sign-ups.
 
-```json
-[
-  {
-    "date": "2026-12-01",
-    "status": "pending"
-  }
-]
-```
+## Hosting and development
 
-- Use `pending` for a night you plan to reserve. The calendar displays the date to check back, three calendar days before play.
-- Change the status to `confirmed` when the tennis court is booked and add `location` with the facility and court number. Use the optional `note` field for instructions such as where to enter.
-- Change the status to `cancelled` when the night will not run. A `note` can explain the cancellation. Pending nights that pass 8 PM Pacific display as “Not confirmed.”
+The Site uses dispatch-owned ChatGPT sign-in and a D1 database. Set the `OPEN_PLAY_ADMINS` Site environment variable to a comma-separated list of UCLA email addresses. The application enforces the list on the server. Keep real admin addresses out of source control.
 
-The example is for editing reference. The schedule starts empty. Validate changes with `node --test scripts/schedule.test.mjs`, then publish the updated `dist/` directory to the host. The calendar reads this file on load and when a visitor returns to the tab.
-
-## Preview
-
-Run `python3 -m http.server 8080 --directory dist` and open `http://localhost:8080`. There is no build step. `dist/` contains the complete static site and works at either a domain root or a repository subpath.
+With Node.js 24 or later, run `npm ci` and `npm test`. The build writes the Worker and its deployment metadata to `dist/`. The tests use a disposable SQLite database and simulated identities. Hosted migrations are tracked under `migrations/`.
 
 The banner uses [Frank Schrader’s outdoor pickleball court photo](https://www.pexels.com/photo/empty-pickleball-court-with-net-in-summer-sun-29820786/) under the [Pexels License](https://www.pexels.com/license/). The blue background remains visible if the photo cannot load.

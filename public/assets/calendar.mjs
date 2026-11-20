@@ -1,7 +1,8 @@
 import {
   DAYS_PER_WEEK, OPEN_PLAY_DAYS, RESERVATION_LEAD_DAYS, SESSION_TIME,
-  pacificClock, civilDate, addDays, currentWeek, readSessions, reservationStatus,
+  pacificClock, civilDate, addDays, currentWeek, isSessionDate, readSessions, reservationStatus, sessionEnded,
 } from './schedule.mjs';
+import { updateSchedule, signIn, signOut } from './schedule-api.mjs';
 
 const calendar = document.querySelector('#days');
 const rangeTitle = document.querySelector('#range');
@@ -10,17 +11,25 @@ const detail = document.querySelector('#detail-content');
 const previous = document.querySelector('#previous');
 const next = document.querySelector('#next');
 const today = document.querySelector('#today');
+const accountLink = document.querySelector('#account-link');
+const feedback = document.querySelector('#schedule-feedback');
 const weekday = new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: 'UTC' });
 const shortDate = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 const dayTitle = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
 const fullDate = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
-const scheduleURL = new URL('../schedule.json', import.meta.url);
+const scheduleURL = new URL('../api/schedule', import.meta.url);
 
 let clock = pacificClock();
 let { first: firstDate, selected: selectedDate } = currentWeek(clock.date);
+const requestedDate = new URL(window.location.href).searchParams.get('date');
+if (isSessionDate(requestedDate)) {
+  firstDate = currentWeek(requestedDate).first;
+  selectedDate = requestedDate;
+}
 let loadState = 'loading';
 let sessions = new Map();
-let requestInFlight = false;
+let viewer = { signedIn: false, member: false, admins: null };
+let activeRefresh;
 
 function element(tag, text, className) {
   const node = document.createElement(tag);
@@ -85,6 +94,7 @@ function renderDetail() {
     const location = element('p', session.location);
     const time = element('strong', SESSION_TIME);
     detail.append(time, location);
+    renderSignup(session);
   } else if (status.note) {
     detail.append(element('p', status.note));
   } else if (session.status === 'pending') {
@@ -92,10 +102,43 @@ function renderDetail() {
     const time = element('strong', SESSION_TIME);
     const message = checkDate > clock.date
       ? `Check back ${shortDate.format(civilDate(checkDate))} for the reservation status.`
-      : 'We’re waiting for the court reservation to be confirmed.';
+      : 'We’re waiting for an admin to approve this session.';
     detail.append(time, element('p', message));
   }
   if (session.note) detail.append(element('p', session.note));
+}
+
+function renderSignup(session) {
+  const people = session.signupCount === 1 ? '1 player signed up' : `${session.signupCount} players signed up`;
+  detail.append(element('p', people));
+  if (sessionEnded(session.date, clock)) return;
+  if (!viewer.member) {
+    const link = element('a', viewer.signedIn ? 'Switch to a UCLA account to sign up' : 'Log in with UCLA email to sign up', 'signup-login');
+    const returnTo = encodeURIComponent(`/?date=${session.date}#schedule`);
+    link.href = `${(viewer.signedIn ? signOut : signIn).split('?')[0]}?return_to=${returnTo}`;
+    link.target = '_top';
+    detail.append(link);
+    return;
+  }
+
+  const button = element('button', session.signedUp ? 'Cancel sign-up' : 'Sign up', 'rules-button signup-button');
+  button.type = 'button';
+  if (session.signedUp) detail.append(element('strong', 'You’re signed up.'));
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    feedback.textContent = '';
+    try {
+      await updateSchedule({ date: session.date, action: session.signedUp ? 'leave' : 'join' });
+      await refresh({ afterCurrent: true });
+      feedback.textContent = session.signedUp ? 'Sign-up cancelled.' : 'You’re signed up.';
+      if (selectedDate === session.date) detail.querySelector('.signup-button')?.focus({ preventScroll: true });
+    } catch (error) {
+      feedback.textContent = error.message;
+    } finally {
+      button.disabled = false;
+    }
+  });
+  detail.append(button);
 }
 
 function render() {
@@ -120,9 +163,7 @@ function updateClock() {
   render();
 }
 
-async function refresh() {
-  if (requestInFlight) return;
-  requestInFlight = true;
+async function loadSchedule() {
   if (loadState === 'error') {
     loadState = 'loading';
     renderDetail();
@@ -130,16 +171,37 @@ async function refresh() {
   try {
     const response = await fetch(scheduleURL, { cache: 'no-cache' });
     if (!response.ok) throw new Error(`Schedule request failed (${response.status}).`);
-    sessions = readSessions(await response.json());
+    const data = await response.json();
+    sessions = readSessions(data.sessions);
+    viewer = data.viewer;
+    accountLink.textContent = viewer.signedIn ? 'Sign out' : 'Log in';
+    accountLink.href = viewer.signedIn ? signOut : signIn;
+    accountLink.setAttribute('aria-label', viewer.signedIn ? 'Sign out' : 'Log in with a UCLA email');
+    window.dispatchEvent(new CustomEvent('openplay-schedule', { detail: { viewer, sessions } }));
     loadState = 'ready';
   } catch (error) {
     console.error(error);
     sessions = new Map();
     loadState = 'error';
   } finally {
-    requestInFlight = false;
     render();
   }
+}
+
+export function refresh({ afterCurrent = false } = {}) {
+  if (activeRefresh) return afterCurrent ? activeRefresh.then(() => refresh()) : activeRefresh;
+  activeRefresh = loadSchedule().finally(() => { activeRefresh = null; });
+  return activeRefresh;
+}
+
+export function showDate(date) {
+  firstDate = currentWeek(date).first;
+  selectedDate = date;
+  render();
+}
+
+export function getSelectedDate() {
+  return selectedDate;
 }
 
 previous.addEventListener('click', () => moveWindow(-DAYS_PER_WEEK));

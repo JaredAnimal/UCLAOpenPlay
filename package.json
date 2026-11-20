@@ -1,0 +1,17 @@
+{
+  "name": "ucla-open-play",
+  "version": "1.0.0",
+  "description": "UCLA pickleball open-play calendar",
+  "scripts": {
+    "test": "npm run build && node --disable-warning=ExperimentalWarning --test scripts/*.test.mjs",
+    "build": "node scripts/build.mjs"
+  },
+  "type": "module",
+  "devDependencies": {
+    "esbuild": "0.27.3"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=24"
+  }
+}

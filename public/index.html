@@ -9,6 +9,7 @@
   <link rel="preload" href="assets/fonts/barlow-semi-condensed-700.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="assets/open-play.css">
   <script type="module" src="assets/calendar.mjs"></script>
+  <script type="module" src="assets/approval.mjs"></script>
   <script type="module" src="assets/rules.mjs"></script>
 </head>
 <body>
@@ -18,6 +19,7 @@
       <nav aria-label="Main navigation">
         <a href="#schedule">Schedule</a>
         <a href="#rules">Court Rules</a>
+        <a id="account-link" class="account-link" href="/signin-with-chatgpt?return_to=%2F" target="_top" aria-label="Log in with a UCLA email">Log in</a>
       </nav>
     </div>
   </header>
@@ -35,10 +37,14 @@
 
     <div class="frame content">
       <section id="schedule" aria-labelledby="schedule-title">
-        <div class="section-intro">
-          <h2 id="schedule-title">Schedule</h2>
-          <p>Open play is on select Tuesday–Friday nights. We find out if we have the court three days before each planned session.</p>
+        <div class="section-intro section-actions">
+          <div>
+            <h2 id="schedule-title">Schedule</h2>
+            <p>Open play is on select Tuesday–Friday nights. We find out if we have the court three days before play. Sessions stay tentative until an admin approves them.</p>
+          </div>
+          <button id="propose" class="rules-button" type="button" aria-haspopup="dialog" hidden>Propose a night</button>
         </div>
+        <p id="schedule-feedback" class="feedback" role="status"></p>
         <div class="schedule-layout">
           <div class="calendar-panel panel">
             <div class="calendar-toolbar">
@@ -54,7 +60,7 @@
             </div>
             <div class="legend" aria-label="Reservation statuses">
               <span class="confirmed">Confirmed</span>
-              <span class="pending">Pending</span>
+              <span class="pending">Tentative</span>
               <span class="cancelled">Cancelled</span>
             </div>
           </div>
@@ -65,6 +71,21 @@
           </section>
         </div>
         <noscript><p>Enable JavaScript to view the open play schedule.</p></noscript>
+      </section>
+
+      <section id="approval" aria-labelledby="approval-title" hidden>
+        <div class="section-intro"><h2 id="approval-title">Session approvals</h2></div>
+        <div class="panel approval-panel">
+          <div>
+            <h3>Admins</h3>
+            <ul id="admins" class="admin-list"></ul>
+          </div>
+          <div>
+            <h3>Tentative nights</h3>
+            <div id="approval-list" class="approval-list"></div>
+            <p id="approval-feedback" class="feedback" role="status"></p>
+          </div>
+        </div>
       </section>
 
       <section id="rules" aria-labelledby="court-rules-title">
@@ -99,6 +120,19 @@
     </div>
   </main>
   <footer class="site-footer"><div class="frame">UCLA Pickleball Open Play</div></footer>
+
+  <dialog id="proposal" class="rules-dialog" aria-labelledby="proposal-title">
+    <header class="rules-heading">
+      <h2 id="proposal-title">Propose a night</h2>
+      <form method="dialog"><button class="rules-close">Close</button></form>
+    </header>
+    <form id="proposal-form" class="proposal-form">
+      <label>Date <input name="date" type="date" required autofocus></label>
+      <p>Choose a Tuesday–Friday night. The session will show as tentative until approved.</p>
+      <button class="rules-button" type="submit">Submit proposal</button>
+      <p id="proposal-feedback" class="feedback" role="status"></p>
+    </form>
+  </dialog>
 
   <dialog id="pickleball-rules" class="rules-dialog" aria-labelledby="rules-title">
     <header class="rules-heading">

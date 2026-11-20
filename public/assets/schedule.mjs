@@ -38,6 +38,16 @@ function isOpenPlayDay(weekday) {
   return weekday >= TUESDAY && weekday <= FRIDAY;
 }
 
+export function isSessionDate(date) {
+  if (typeof date !== 'string' || !datePattern.test(date)) return false;
+  const parsed = civilDate(date);
+  return Number.isFinite(+parsed) && parsed.toISOString().slice(0, 10) === date && isOpenPlayDay(parsed.getUTCDay());
+}
+
+export function sessionEnded(date, clock) {
+  return date < clock.date || (date === clock.date && clock.hour >= 20);
+}
+
 export function currentWeek(date) {
   const weekday = civilDate(date).getUTCDay();
   if (isOpenPlayDay(weekday)) {
@@ -52,7 +62,7 @@ export function readSessions(data) {
 
   const sessions = new Map();
   for (const row of data) {
-    const { date, status, location, note } = row ?? {};
+    const { date, status, location, note, signupCount, signedUp } = row ?? {};
     if (typeof date !== 'string' || !datePattern.test(date) || !Number.isFinite(+civilDate(date)) || addDays(date, 0) !== date) {
       throw new Error(`Invalid session date: ${date ?? '(missing)'}`);
     }
@@ -64,7 +74,7 @@ export function readSessions(data) {
     }
     if (status === 'confirmed' && !location) throw new Error(`Enter the reserved court for ${date}.`);
     if (note !== undefined && typeof note !== 'string') throw new Error(`Invalid session note for ${date}.`);
-    sessions.set(date, { date, status, location: location?.trim(), note: note?.trim() });
+    sessions.set(date, { date, status, location: location?.trim(), note: note?.trim(), signupCount: signupCount ?? 0, signedUp: signedUp === true });
   }
   return sessions;
 }
@@ -73,8 +83,8 @@ export function reservationStatus(session, clock) {
   if (!session) return null;
   if (session.status === 'confirmed') return { label: 'Confirmed', style: 'confirmed' };
   if (session.status === 'cancelled') return { label: 'Cancelled', style: 'cancelled' };
-  if (session.date < clock.date || (session.date === clock.date && clock.hour >= 20)) {
+  if (sessionEnded(session.date, clock)) {
     return { label: 'Not confirmed', style: 'cancelled', note: 'A reservation was never posted for this session.' };
   }
-  return { label: 'Pending', style: 'pending' };
+  return { label: 'Tentative', style: 'pending' };
 }
