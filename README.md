@@ -1,6 +1,6 @@
 # UCLA Pickleball Open Play
 
-A standalone calendar for select Tuesday–Friday nights from 6–8 PM Pacific. The calendar and branding draw from [UCLA Club Pickleball](https://github.com/JaredAnimal/UCLAPickleball).
+A standalone calendar for select Tuesday–Friday nights from 6–8 PM Pacific. The calendar layout draws from [UCLA Club Pickleball](https://github.com/JaredAnimal/UCLAPickleball). The Court Rules section describes open-play rotation, and its **Pickleball Rules** button opens the rules of the game.
 
 ## Update the schedule
 
