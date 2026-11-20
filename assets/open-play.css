@@ -153,14 +153,16 @@ body:has(.rules-dialog[open]) { overflow: hidden; }
 .approval-panel { display: grid; grid-template-columns: minmax(11rem, 1fr) minmax(0, 2fr); gap: 1.25rem; padding: 1.15rem; }
 .approval-panel h3 { margin-bottom: .6rem; color: var(--navy); }
 .admin-list { margin: 0; padding-left: 1.2rem; overflow-wrap: anywhere; }
+.admin-form { display: grid; justify-items: start; gap: .5rem; margin-top: .9rem; }
+.admin-form label { width: 100%; }
 .approval-list form { display: grid; gap: .5rem; padding: .8rem 0; border-top: 1px solid var(--line); }
 .approval-list h4 { margin: 0; font-size: 1.05rem; }
 .review-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
 .proposal-form { display: grid; justify-items: start; gap: .8rem; padding: 1.2rem 1.4rem; }
 .proposal-form p, .approval-list p { color: var(--muted); }
-.proposal-form label, .approval-list label { display: grid; gap: .3rem; font-weight: 600; }
-.proposal-form input, .approval-list input { min-height: 2.75rem; max-width: 100%; padding: .45rem .6rem; border: 1px solid #98adc1; border-radius: .45rem; background: var(--white); font: inherit; color: var(--ink); }
-.approval-list input { width: 100%; }
+.proposal-form label, .approval-list label, .admin-form label { display: grid; gap: .3rem; font-weight: 600; }
+.proposal-form input, .approval-list input, .admin-form input { min-height: 2.75rem; max-width: 100%; padding: .45rem .6rem; border: 1px solid #98adc1; border-radius: .45rem; background: var(--white); font: inherit; color: var(--ink); }
+.approval-list input, .admin-form input { width: 100%; min-width: 0; }
 button:disabled { opacity: .65; }
 .site-footer { background: var(--navy); color: var(--white); padding: 1.2rem 0; font-size: .9375rem; font-weight: 600; }
 

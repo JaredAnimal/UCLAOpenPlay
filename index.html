@@ -19,7 +19,7 @@
       <nav aria-label="Main navigation">
         <a href="#schedule">Schedule</a>
         <a href="#rules">Court Rules</a>
-        <a id="account-link" class="account-link" href="/signin-with-chatgpt?return_to=%2F" target="_top" aria-label="Log in with a UCLA email">Log in</a>
+        <a id="account-link" class="account-link" href="/auth/login" target="_top" aria-label="Log in with a UCLA email">Log in</a>
       </nav>
     </div>
   </header>
@@ -80,6 +80,11 @@
           <div>
             <h3>Admins</h3>
             <ul id="admins" class="admin-list"></ul>
+            <form id="admin-form" class="admin-form">
+              <label>UCLA email <input type="email" name="email" required maxlength="254"></label>
+              <button class="rules-button" type="submit">Add admin</button>
+              <p id="admin-feedback" class="feedback" role="status"></p>
+            </form>
           </div>
           <div>
             <h3>Tentative nights</h3>
