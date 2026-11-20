@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#003b5c">
+  <meta name="description" content="Check upcoming UCLA pickleball open-play nights, reservation status, and court rules.">
+  <title>Open Play | UCLA Pickleball</title>
+  <link rel="icon" href="assets/ucla-pickleball-logo.webp" type="image/webp">
+  <link rel="preload" href="assets/fonts/barlow-semi-condensed-700.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="assets/open-play.css">
+  <script type="module" src="assets/calendar.mjs"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="frame header-inner">
+      <a class="brand" href="./">
+        <img src="assets/ucla-pickleball-logo.webp" width="43" height="43" alt="">
+        <span>UCLA Pickleball</span>
+      </a>
+      <nav aria-label="Main navigation">
+        <a href="#schedule">Schedule</a>
+        <a href="#rules">Court Rules</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="hero">
+      <img class="hero-photo" src="assets/team-header-1270.webp" srcset="assets/team-header-760.webp 760w, assets/team-header-1270.webp 1270w, assets/team-header-1670.webp 1670w" sizes="(min-width: 900px) 72vw, 100vw" width="1270" height="730" alt="" fetchpriority="high">
+      <div class="frame hero-inner">
+        <h1>Pickleball <span>Open Play</span></h1>
+        <div class="hero-info">
+          <span>6–8 PM Pacific</span>
+          <span>Four courts</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="frame content">
+      <section id="schedule" aria-labelledby="schedule-title">
+        <div class="section-intro">
+          <h2 id="schedule-title">Schedule</h2>
+          <p>Open play is on select Tuesday–Friday nights. We find out if we have the court three days before each planned session.</p>
+        </div>
+        <div class="schedule-layout">
+          <div class="calendar-panel panel">
+            <div class="calendar-toolbar">
+              <h3 id="range" aria-live="polite">Upcoming dates</h3>
+              <div class="calendar-nav" aria-label="Calendar navigation">
+                <button id="previous" type="button" class="nav-direction" aria-label="Previous week"><span aria-hidden="true"></span></button>
+                <button id="today" type="button">Today</button>
+                <button id="next" type="button" class="nav-direction next" aria-label="Next week"><span aria-hidden="true"></span></button>
+              </div>
+            </div>
+            <div id="days" class="days" aria-labelledby="range">
+              <p class="calendar-message">Loading schedule…</p>
+            </div>
+            <div class="legend" aria-label="Reservation statuses">
+              <span class="confirmed">Confirmed</span>
+              <span class="pending">Pending</span>
+              <span class="cancelled">Cancelled</span>
+            </div>
+          </div>
+          <section class="date-panel panel" id="date-details" aria-labelledby="detail-date">
+            <p class="detail-label">Selected date</p>
+            <h3 id="detail-date">Upcoming dates</h3>
+            <div id="detail-content" class="detail-content" aria-live="polite" aria-atomic="true"></div>
+          </section>
+        </div>
+        <noscript><p>Enable JavaScript to view the open play schedule.</p></noscript>
+      </section>
+
+      <section id="rules" aria-labelledby="rules-title">
+        <div class="section-intro">
+          <h2 id="rules-title">Court Rules</h2>
+          <p>Four pickleball courts share one reserved tennis court.</p>
+        </div>
+        <div class="court-layout panel" aria-label="Three social courts and one challenge court">
+          <div class="court"><div class="court-lines" aria-hidden="true"><span></span></div><span>Social 1</span></div>
+          <div class="court"><div class="court-lines" aria-hidden="true"><span></span></div><span>Social 2</span></div>
+          <div class="court"><div class="court-lines" aria-hidden="true"><span></span></div><span>Social 3</span></div>
+          <div class="court challenge"><div class="court-lines" aria-hidden="true"><span></span></div><span>Challenge</span></div>
+        </div>
+        <div class="rule-grid">
+          <article class="rule panel">
+            <h3>Social Courts</h3>
+            <p>All skill levels are welcome. When players are waiting, all four players rotate off after the game and the next four paddles go on.</p>
+          </article>
+          <article class="rule panel">
+            <h3>Challenge Court</h3>
+            <p>Winners stay when there’s a queue. The other team rotates off and the next two paddles go on.</p>
+          </article>
+          <article class="rule panel">
+            <h3>All Courts</h3>
+            <p>Place your paddle in the queue for the court you want. Play doubles to 11, win by 2. Rotate promptly when your game ends.</p>
+          </article>
+        </div>
+      </section>
+    </div>
+  </main>
+  <footer class="site-footer"><div class="frame">UCLA Pickleball Open Play</div></footer>
+</body>
+</html>
