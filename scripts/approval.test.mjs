@@ -55,10 +55,7 @@ test('UCLA proposals stay tentative until an admin approves; approved sessions a
   assert.equal((await request({ email: admin.email }, proposal)).status, 401);
   assert.equal((await request(outside, proposal)).status, 403);
   assert.equal((await request(student, proposal, 'https://other.test')).status, 403);
-  assert.equal((await request(student, { ...proposal, date: addDays(date, -1) })).status, 400);
-  assert.equal((await request(student, { ...proposal, date: addDays(date, 1) })).status, 400);
-  assert.equal((await request(student, { ...proposal, date: addDays(date, 3) })).status, 400);
-  assert.equal((await request(student, { ...proposal, date: addDays(date, 4) })).status, 400);
+  assert.equal((await request(student, { ...proposal, date: '2026-02-30' })).status, 400);
   assert.equal((await request(student, proposal)).status, 201);
   assert.equal((await request(student, proposal)).status, 409);
   assert.equal((await request(student, approval)).status, 403);

@@ -45,7 +45,7 @@ function renderDays() {
   for (let offset = 0; offset < DAYS_PER_WEEK; offset += 1) {
     const date = addDays(firstDate, offset);
     const status = calendarStatus(date, sessions.get(date), clock);
-    const button = element('button', '', status?.style === 'tennis' ? 'day tennis-day' : 'day');
+    const button = element('button', '', 'day');
     button.type = 'button';
     button.dataset.date = date;
     button.setAttribute('aria-label', `${fullDate.format(civilDate(date))}${status ? `, ${status.label}` : ''}`);
@@ -55,6 +55,8 @@ function renderDays() {
       element('span', weekday.format(civilDate(date)), 'day-name'),
       element('span', String(civilDate(date).getUTCDate()), 'day-number'),
     );
+    const session = sessions.get(date);
+    if (session?.status === 'confirmed') button.append(element('span', session.time, 'day-time'));
     if (status) button.append(element('span', status.label, `day-status ${status.style}`));
     days.push(button);
   }
@@ -70,10 +72,6 @@ function renderDetail() {
 
   const session = sessions.get(selectedDate);
   const status = calendarStatus(selectedDate, session, clock);
-  if (status?.style === 'tennis') {
-    detail.append(element('span', status.label, `status-pill ${status.style}`));
-    return;
-  }
   if (loadState === 'loading') {
     detail.append(element('p', 'Loading schedule…'));
     return;
@@ -95,7 +93,7 @@ function renderDetail() {
   detail.append(element('span', status.label, `status-pill ${status.style}`));
   if (session?.status === 'confirmed') {
     const location = element('p', session.location);
-    const time = element('strong', SESSION_TIME);
+    const time = element('strong', session.time);
     detail.append(time, location);
     renderSignup(session);
   } else if (status.note) {
@@ -114,6 +112,27 @@ function renderDetail() {
 function renderSignup(session) {
   const people = session.signupCount === 1 ? '1 player signed up' : `${session.signupCount} players signed up`;
   detail.append(element('p', people));
+  if (session.players.length) {
+    // Names wrap to two lines; "Show all" lets the list grow.
+    const names = element('ul', '', 'player-names');
+    const items = session.players.map(name => element('li', name));
+    names.append(...items);
+    detail.append(names);
+    const toggle = element('button', `Show all ${items.length}`, 'show-all');
+    toggle.type = 'button';
+    // Collapsed: whole names on the first two rows only (no clipped chips).
+    const collapse = open => {
+      items.forEach(item => { item.hidden = false; });
+      const rows = [...new Set(items.map(item => item.offsetTop))];
+      if (!open) items.forEach(item => { item.hidden = item.offsetTop > rows[1]; });
+      toggle.hidden = rows.length <= 2;
+      toggle.textContent = open ? 'Show less' : `Show all ${items.length}`;
+    };
+    let open = false;
+    toggle.addEventListener('click', () => { open = !open; collapse(open); });
+    detail.append(toggle);
+    requestAnimationFrame(() => collapse(open));
+  }
   if (sessionEnded(session.date, clock)) return;
   if (!viewer.member) {
     const link = element('a', viewer.signedIn ? 'Switch to a UCLA account to sign up' : 'Log in with UCLA email to sign up', 'signup-login');

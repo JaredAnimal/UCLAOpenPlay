@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { addDays, calendarStatus, currentWeek, isSessionDate, isTennisDate, pacificClock, readSessions } from '../public/assets/schedule.mjs';
+import { addDays, calendarStatus, currentWeek, isSessionDate, pacificClock, readSessions } from '../public/assets/schedule.mjs';
 
 test('the visible week starts on Monday and selects today, including on weekends', () => {
   for (const selected of ['2026-11-23', '2026-11-27', '2026-11-28', '2026-11-29']) {
@@ -9,26 +9,35 @@ test('the visible week starts on Monday and selects today, including on weekends
   assert.deepEqual(currentWeek('2026-01-01'), { first: '2025-12-29', selected: '2026-01-01' });
 });
 
-test('Monday, Wednesday, Friday, and Saturday are reserved and Sunday has no open play', () => {
+test('any day of the week can hold a session', () => {
   const dates = Array.from({ length: 7 }, (_, offset) => addDays('2026-11-23', offset));
-  assert.deepEqual(dates.filter(isTennisDate), ['2026-11-23', '2026-11-25', '2026-11-27', '2026-11-28']);
-  assert.deepEqual(dates.filter(isSessionDate), ['2026-11-24', '2026-11-26']);
-  const sessions = readSessions(dates.slice(1, 5).map(date => ({ date, status: 'pending' })));
-  assert.deepEqual([...sessions.keys()], ['2026-11-24', '2026-11-26']);
+  assert.deepEqual(dates.filter(isSessionDate), dates);
+  assert.equal(isSessionDate('2026-02-30'), false);
+  const sessions = readSessions(dates.map(date => ({ date, status: 'pending' })));
+  assert.deepEqual([...sessions.keys()], dates);
 });
 
-test('unposted open-play dates are tentative beyond three days and tennis is guaranteed', () => {
+test('dates without a session have no status', () => {
   const today = { date: '2026-11-20', hour: 12 };
-  const nextDay = { date: '2026-11-21', hour: 12 };
+  for (const date of ['2026-11-20', '2026-11-24', '2026-11-25', '2026-11-27', '2026-11-28', '2026-11-29']) {
+    assert.equal(calendarStatus(date, undefined, today), null);
+  }
   const tuesday = '2026-11-24';
-  const friday = '2026-11-27';
-  assert.equal(calendarStatus(tuesday, undefined, today).label, 'Tentative');
-  assert.equal(calendarStatus(tuesday, undefined, nextDay), null);
-  assert.equal(calendarStatus('2026-11-29', undefined, today), null);
-  assert.equal(calendarStatus(friday, undefined, today).label, 'Reserved for tennis');
-  assert.equal(calendarStatus('2026-11-20', undefined, today).label, 'Reserved for tennis');
   assert.equal(calendarStatus(tuesday, { date: tuesday, status: 'cancelled' }, today).label, 'Cancelled');
   assert.equal(calendarStatus(tuesday, { date: tuesday, status: 'confirmed' }, today).label, 'Confirmed');
+});
+
+test('sessions keep their hours and sign-up names, with defaults', () => {
+  const sessions = readSessions([
+    { date: '2026-11-25', status: 'confirmed', location: 'X', time: '6–7 PM', players: ['A'] },
+    { date: '2026-11-28', status: 'pending' },
+  ]);
+  const wednesday = sessions.get('2026-11-25');
+  assert.equal(wednesday.time, '6–7 PM');
+  assert.deepEqual(wednesday.players, ['A']);
+  const saturday = sessions.get('2026-11-28');
+  assert.equal(saturday.time, '6–8 PM');
+  assert.deepEqual(saturday.players, []);
 });
 
 test('the reservation check uses Pacific calendar days through daylight-saving transitions', () => {
@@ -39,9 +48,6 @@ test('the reservation check uses Pacific calendar days through daylight-saving t
 });
 
 test('invalid records cannot imply a session is booked', () => {
-  for (const date of ['2026-11-21', '2026-11-22', '2026-11-23']) {
-    assert.throws(() => readSessions([{ date, status: 'pending' }]), /Tuesdays and Thursdays/);
-  }
   assert.throws(() => readSessions([{ date: '2026-02-30', status: 'pending' }]), /Invalid session date/);
   assert.throws(() => readSessions([{ date: '2026-11-24', status: 'confirmed' }]), /reserved court/);
   const session = { date: '2026-11-24', status: 'pending' };
