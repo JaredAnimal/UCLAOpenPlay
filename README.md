@@ -24,3 +24,5 @@ The example is for editing reference. The schedule starts empty. Validate change
 ## Preview
 
 Run `python3 -m http.server 8080 --directory dist` and open `http://localhost:8080`. There is no build step. `dist/` contains the complete static site and works at either a domain root or a repository subpath.
+
+The banner uses [Frank Schrader’s outdoor pickleball court photo](https://www.pexels.com/photo/empty-pickleball-court-with-net-in-summer-sun-29820786/) under the [Pexels License](https://www.pexels.com/license/). The blue background remains visible if the photo cannot load.
