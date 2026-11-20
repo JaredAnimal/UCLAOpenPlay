@@ -1,6 +1,6 @@
 import {
-  DAYS_PER_WEEK, OPEN_PLAY_DAYS, RESERVATION_LEAD_DAYS, SESSION_TIME,
-  pacificClock, civilDate, addDays, currentWeek, isSessionDate, readSessions, reservationStatus, sessionEnded,
+  DAYS_PER_WEEK, RESERVATION_LEAD_DAYS, SESSION_TIME, TENNIS_RESERVATION,
+  pacificClock, civilDate, addDays, currentWeek, isCalendarDate, isTennisDate, readSessions, reservationStatus, sessionEnded,
 } from './schedule.mjs';
 import { bindAccountLink, fetchSchedule, updateSchedule } from './schedule-api.mjs';
 
@@ -21,7 +21,7 @@ const fullDate = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'lon
 let clock = pacificClock();
 let { first: firstDate, selected: selectedDate } = currentWeek(clock.date);
 const requestedDate = new URL(window.location.href).searchParams.get('date');
-if (isSessionDate(requestedDate)) {
+if (isCalendarDate(requestedDate)) {
   firstDate = currentWeek(requestedDate).first;
   selectedDate = requestedDate;
 }
@@ -38,14 +38,15 @@ function element(tag, text, className) {
 }
 
 function renderDays() {
-  const endDate = addDays(firstDate, OPEN_PLAY_DAYS - 1);
+  const endDate = addDays(firstDate, DAYS_PER_WEEK - 1);
   rangeTitle.textContent = shortDate.formatRange(civilDate(firstDate), civilDate(endDate));
 
   const days = [];
-  for (let offset = 0; offset < OPEN_PLAY_DAYS; offset += 1) {
+  for (let offset = 0; offset < DAYS_PER_WEEK; offset += 1) {
     const date = addDays(firstDate, offset);
-    const status = reservationStatus(sessions.get(date), clock);
-    const button = element('button', '', 'day');
+    const tennis = isTennisDate(date);
+    const status = tennis ? TENNIS_RESERVATION : reservationStatus(sessions.get(date), clock);
+    const button = element('button', '', tennis ? 'day tennis-day' : 'day');
     button.type = 'button';
     button.dataset.date = date;
     button.setAttribute('aria-label', `${fullDate.format(civilDate(date))}${status ? `, ${status.label}` : ''}`);
@@ -68,6 +69,10 @@ function renderDetail() {
   detailDate.textContent = (sameYear ? dayTitle : fullDate).format(civilDate(selectedDate));
   detail.replaceChildren();
 
+  if (isTennisDate(selectedDate)) {
+    detail.append(element('span', TENNIS_RESERVATION.label, `status-pill ${TENNIS_RESERVATION.style}`));
+    return;
+  }
   if (loadState === 'loading') {
     detail.append(element('p', 'Loading schedule…'));
     return;

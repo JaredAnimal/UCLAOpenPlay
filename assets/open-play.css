@@ -91,11 +91,14 @@ h3 { font: 700 1.4rem/1.15 var(--display); }
 .calendar-nav button:hover { background: var(--wash); }
 .nav-direction span { display: inline-block; width: .45rem; height: .45rem; border: solid currentColor; border-width: 0 0 2px 2px; transform: rotate(45deg); vertical-align: .12em; }
 .nav-direction.next span { transform: rotate(225deg); }
-.days { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .4rem; }
+.days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .4rem; }
 .calendar-message { grid-column: 1 / -1; color: var(--muted); }
 .day { display: flex; flex-direction: column; align-items: flex-start; gap: .12rem; min-width: 0; min-height: 7rem; padding: .58rem .48rem; border: 1px solid #e3eaf2; border-radius: .65rem; text-align: left; background: #f7f9fc; }
 .day:hover { border-color: var(--blue); background: #f0f7ff; }
 .day[aria-pressed='true'] { border-color: var(--blue); background: #eaf4fc; box-shadow: inset 0 0 0 1px var(--blue); }
+.day.tennis-day { background: #f5effb; }
+.day.tennis-day:not([aria-pressed='true']) { border-color: #ded1ed; }
+.day.tennis-day:hover, .day.tennis-day[aria-pressed='true'] { background: #ece0f6; }
 .day[aria-current='date'] .day-number { color: var(--blue-dark); }
 .day-name { font-size: .9rem; font-weight: 600; color: var(--muted); }
 .day-number { font: 700 1.85rem/1 var(--display); }
@@ -103,6 +106,7 @@ h3 { font: 700 1.4rem/1.15 var(--display); }
 .confirmed { --status-bg: #e3f2ff; --status-ink: #184f7a; --status-dot: #2774ae; }
 .pending { --status-bg: #fff3c1; --status-ink: #6d4e00; --status-dot: #a67400; }
 .cancelled { --status-bg: #edf0f4; --status-ink: #4b5b6c; --status-dot: #64748b; }
+.tennis { --status-bg: #eadbf6; --status-ink: #4c2d68; --status-dot: #765195; }
 .day-status, .status-pill { color: var(--status-ink); background: var(--status-bg); }
 .legend { display: flex; flex-wrap: wrap; gap: .3rem 1.15rem; margin-top: .85rem; color: var(--muted); font-size: .9rem; font-weight: 600; }
 .legend > span, .status-pill { display: inline-flex; align-items: center; gap: .4rem; }
@@ -174,6 +178,7 @@ button:disabled { opacity: .65; }
   .hero-info { font-size: 1rem; margin-top: 1.15rem; }
   .content { gap: 2.65rem; padding-block: 1.75rem 2.65rem; }
   .calendar-panel { padding: .75rem; }
+  .days { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .day { min-height: 5.5rem; }
   .court-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .rule-grid { grid-template-columns: minmax(0, 1fr); gap: .65rem; }
@@ -187,5 +192,5 @@ button:disabled { opacity: .65; }
   .brand { font-size: 1rem; }
   .calendar-toolbar h3 { font-size: 1.2rem; }
   .calendar-nav button { padding-inline: .5rem; }
-  .days { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .days { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }

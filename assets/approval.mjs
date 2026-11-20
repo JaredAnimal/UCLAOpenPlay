@@ -64,7 +64,7 @@ propose.addEventListener('click', () => {
   const date = getSelectedDate();
   const clock = pacificClock();
   proposalDate.min = clock.date;
-  proposalDate.value = sessionEnded(date, clock) ? '' : date;
+  proposalDate.value = isSessionDate(date) && !sessionEnded(date, clock) ? date : '';
   proposalFeedback.textContent = '';
   proposal.showModal();
 });
@@ -73,7 +73,7 @@ proposalForm.addEventListener('submit', async event => {
   event.preventDefault();
   const date = proposalDate.value;
   if (!isSessionDate(date)) {
-    proposalFeedback.textContent = 'Choose a Tuesday–Friday date.';
+    proposalFeedback.textContent = 'Choose a Tuesday, Thursday, or Friday.';
     return;
   }
   const button = proposalForm.querySelector('button');
