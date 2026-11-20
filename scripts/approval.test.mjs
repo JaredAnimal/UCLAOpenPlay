@@ -7,7 +7,7 @@ import { currentWeek, pacificClock, addDays } from '../public/assets/schedule.mj
 import { pagesUrl } from '../public/assets/hosting.mjs';
 
 const origin = 'https://open-play.test';
-const date = addDays(currentWeek(pacificClock().date).first, 7);
+const date = addDays(currentWeek(pacificClock().date).first, 8);
 const admin = { id: 'organizer', email: 'ADMIN@g.ucla.edu' };
 const student = { id: 'student', email: 'player@ucla.edu' };
 const outside = { id: 'outsider', email: 'outsider@example.com' };
@@ -52,6 +52,8 @@ test('UCLA proposals stay tentative until an admin approves; approved sessions a
   assert.equal((await request(outside, proposal)).status, 403);
   assert.equal((await request(student, proposal, 'https://other.test')).status, 403);
   assert.equal((await request(student, { ...proposal, date: addDays(date, -1) })).status, 400);
+  assert.equal((await request(student, { ...proposal, date: addDays(date, 1) })).status, 400);
+  assert.equal((await request(student, { ...proposal, date: addDays(date, 4) })).status, 400);
   assert.equal((await request(student, proposal)).status, 201);
   assert.equal((await request(student, proposal)).status, 409);
   assert.equal((await request(student, approval)).status, 403);

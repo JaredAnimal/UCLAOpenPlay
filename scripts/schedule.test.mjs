@@ -1,12 +1,20 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { addDays, currentWeek, pacificClock, readSessions, reservationStatus } from '../public/assets/schedule.mjs';
+import { addDays, currentWeek, isSessionDate, isTennisDate, pacificClock, readSessions, reservationStatus } from '../public/assets/schedule.mjs';
 
-test('the visible week starts on Tuesday, including when today is Monday or a weekend', () => {
-  assert.deepEqual(currentWeek('2026-11-23'), { first: '2026-11-24', selected: '2026-11-24' });
-  assert.deepEqual(currentWeek('2026-11-27'), { first: '2026-11-24', selected: '2026-11-27' });
-  assert.deepEqual(currentWeek('2026-11-28'), { first: '2026-12-01', selected: '2026-12-01' });
-  assert.deepEqual(currentWeek('2026-11-29'), { first: '2026-12-01', selected: '2026-12-01' });
+test('the visible week starts on Monday and selects today, including on weekends', () => {
+  for (const selected of ['2026-11-23', '2026-11-27', '2026-11-28', '2026-11-29']) {
+    assert.deepEqual(currentWeek(selected), { first: '2026-11-23', selected });
+  }
+  assert.deepEqual(currentWeek('2026-01-01'), { first: '2025-12-29', selected: '2026-01-01' });
+});
+
+test('Monday, Wednesday, and Saturday are reserved and Sunday has no open play', () => {
+  const dates = Array.from({ length: 7 }, (_, offset) => addDays('2026-11-23', offset));
+  assert.deepEqual(dates.filter(isTennisDate), ['2026-11-23', '2026-11-25', '2026-11-28']);
+  assert.deepEqual(dates.filter(isSessionDate), ['2026-11-24', '2026-11-26', '2026-11-27']);
+  const sessions = readSessions([{ date: '2026-11-24', status: 'pending' }, { date: '2026-11-25', status: 'pending' }]);
+  assert.deepEqual([...sessions.keys()], ['2026-11-24']);
 });
 
 test('the reservation check uses Pacific calendar days through daylight-saving transitions', () => {
@@ -18,7 +26,7 @@ test('the reservation check uses Pacific calendar days through daylight-saving t
 
 test('invalid records cannot imply a session is booked', () => {
   for (const date of ['2026-11-21', '2026-11-22', '2026-11-23']) {
-    assert.throws(() => readSessions([{ date, status: 'pending' }]), /Tuesday–Friday/);
+    assert.throws(() => readSessions([{ date, status: 'pending' }]), /Tuesdays, Thursdays, and Fridays/);
   }
   assert.throws(() => readSessions([{ date: '2026-02-30', status: 'pending' }]), /Invalid session date/);
   assert.throws(() => readSessions([{ date: '2026-11-24', status: 'confirmed' }]), /reserved court/);

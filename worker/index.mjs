@@ -91,7 +91,7 @@ async function handleSchedule(request, env, url, fromPages) {
   let input;
   try { input = await request.json(); } catch { return error('Enter a valid request.', 400); }
   const { date, action, location } = input ?? {};
-  if (!isSessionDate(date)) return error('Choose a Tuesday–Friday date.', 400);
+  if (!isSessionDate(date)) return error('Choose a Tuesday, Thursday, or Friday.', 400);
   if (sessionEnded(date, pacificClock())) return error('This date has already passed.', 400);
 
   switch (action) {

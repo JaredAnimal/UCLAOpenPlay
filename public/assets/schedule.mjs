@@ -1,10 +1,14 @@
 const TIME_ZONE = 'America/Los_Angeles';
+const MONDAY = 1;
 const TUESDAY = 2;
+const WEDNESDAY = 3;
+const THURSDAY = 4;
 const FRIDAY = 5;
+const SATURDAY = 6;
 export const DAYS_PER_WEEK = 7;
-export const OPEN_PLAY_DAYS = FRIDAY - TUESDAY + 1;
 export const RESERVATION_LEAD_DAYS = 3;
 export const SESSION_TIME = '6–8 PM Pacific';
+export const TENNIS_RESERVATION = { label: 'Reserved for tennis', style: 'tennis' };
 
 const localClock = new Intl.DateTimeFormat('en-CA', {
   timeZone: TIME_ZONE,
@@ -35,13 +39,22 @@ export function addDays(date, offset) {
 }
 
 function isOpenPlayDay(weekday) {
-  return weekday >= TUESDAY && weekday <= FRIDAY;
+  return weekday === TUESDAY || weekday === THURSDAY || weekday === FRIDAY;
+}
+
+export function isCalendarDate(date) {
+  if (typeof date !== 'string' || !datePattern.test(date)) return false;
+  const parsed = civilDate(date);
+  return Number.isFinite(+parsed) && parsed.toISOString().slice(0, 10) === date;
 }
 
 export function isSessionDate(date) {
-  if (typeof date !== 'string' || !datePattern.test(date)) return false;
-  const parsed = civilDate(date);
-  return Number.isFinite(+parsed) && parsed.toISOString().slice(0, 10) === date && isOpenPlayDay(parsed.getUTCDay());
+  return isCalendarDate(date) && isOpenPlayDay(civilDate(date).getUTCDay());
+}
+
+export function isTennisDate(date) {
+  const weekday = civilDate(date).getUTCDay();
+  return weekday === MONDAY || weekday === WEDNESDAY || weekday === SATURDAY;
 }
 
 export function sessionEnded(date, clock) {
@@ -50,11 +63,8 @@ export function sessionEnded(date, clock) {
 
 export function currentWeek(date) {
   const weekday = civilDate(date).getUTCDay();
-  if (isOpenPlayDay(weekday)) {
-    return { first: addDays(date, TUESDAY - weekday), selected: date };
-  }
-  const first = addDays(date, (TUESDAY - weekday + DAYS_PER_WEEK) % DAYS_PER_WEEK);
-  return { first, selected: first };
+  const daysSinceMonday = (weekday - MONDAY + DAYS_PER_WEEK) % DAYS_PER_WEEK;
+  return { first: addDays(date, -daysSinceMonday), selected: date };
 }
 
 export function readSessions(data) {
@@ -63,10 +73,12 @@ export function readSessions(data) {
   const sessions = new Map();
   for (const row of data) {
     const { date, status, location, note, signupCount, signedUp } = row ?? {};
-    if (typeof date !== 'string' || !datePattern.test(date) || !Number.isFinite(+civilDate(date)) || addDays(date, 0) !== date) {
+    if (!isCalendarDate(date)) {
       throw new Error(`Invalid session date: ${date ?? '(missing)'}`);
     }
-    if (!isOpenPlayDay(civilDate(date).getUTCDay())) throw new Error(`Open play is Tuesday–Friday: ${date}.`);
+    const weekday = civilDate(date).getUTCDay();
+    if (weekday === WEDNESDAY) continue; // Older schedules could include Wednesday sessions.
+    if (!isOpenPlayDay(weekday)) throw new Error(`Open play is on Tuesdays, Thursdays, and Fridays: ${date}.`);
     if (sessions.has(date)) throw new Error(`Duplicate session date: ${date}`);
     if (!validStatuses.has(status)) throw new Error(`Invalid reservation status for ${date}.`);
     if (location !== undefined && (typeof location !== 'string' || !location.trim())) {
