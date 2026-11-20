@@ -1,7 +1,7 @@
 import assets from 'open-play:assets';
 import { displayName, isSessionDate, pacificClock, sessionEnded, sessionTime } from '../public/assets/schedule.mjs';
 import { beginPagesLogin, handlePagesSession, pagesCors, pagesIdentity, pagesOrigin } from './pages-auth.mjs';
-import { uclaAddress } from './auth-primitives.mjs';
+import { digest, uclaAddress } from './auth-primitives.mjs';
 import { finishGoogleLogin, finishGoogleLogout, googleEnabled, googleIdentity, startGoogleLogin } from './google-auth.mjs';
 
 function siteIdentity(request) {
@@ -96,6 +96,33 @@ async function signup(db, viewer, date, action) {
   return existing ? json(existing) : error('Sign-ups open after an admin approves this session.', 409);
 }
 
+const BOT_LOCATION = 'Sunset Rec Tennis Court 2';
+
+// Picklebot (server to server, no Origin) reports a booked court hour; the night becomes confirmed.
+async function botSession(request, env) {
+  if (request.method !== 'POST') return error('Method not allowed.', 405);
+  const sent = (request.headers.get('Authorization') ?? '').match(/^Bearer (.+)$/)?.[1];
+  if (!sent || !env.OPEN_PLAY_BOT_TOKEN || await digest(sent) !== await digest(env.OPEN_PLAY_BOT_TOKEN)) {
+    return error('Not authorized.', 401);
+  }
+  if (!request.headers.get('content-type')?.startsWith('application/json')) return error('Send JSON.', 400);
+  let input;
+  try { input = await request.json(); } catch { return error('Enter a valid request.', 400); }
+  const { date, hour } = input ?? {};
+  if (!isSessionDate(date) || sessionEnded(date, pacificClock())) return error('Choose a date that has not ended.', 400);
+  if (!Number.isInteger(hour) || hour < 13 || hour > 23) return error('Choose an hour from 13 to 23.', 400);
+  // ponytail: min/max merge assumes adjacent hours; non-adjacent bookings would show one wide span.
+  const saved = await env.DB.prepare(`
+    INSERT INTO sessions (date, status, location, proposed_by, reviewed_by, start_hour, end_hour)
+    VALUES (?1, 'confirmed', ?2, 'bot', 'bot', ?3, ?3 + 1)
+    ON CONFLICT(date) DO UPDATE SET status = 'confirmed', location = excluded.location, reviewed_by = 'bot',
+      start_hour = MIN(COALESCE(start_hour, excluded.start_hour), excluded.start_hour),
+      end_hour = MAX(COALESCE(end_hour, excluded.end_hour), excluded.end_hour)
+    RETURNING date, start_hour, end_hour
+  `).bind(date, BOT_LOCATION, hour).first();
+  return json({ date, time: sessionTime(saved.start_hour, saved.end_hour) });
+}
+
 async function handleCalendarApi(request, env, url, fromPages) {
   const directGoogle = googleEnabled(env);
   const identity = fromPages ? await pagesIdentity(request, env.DB)
@@ -151,6 +178,12 @@ export default {
       if (googleEnabled(env)) return Response.redirect(new URL(`/auth/google/start${url.search}`, url.origin));
       try { return await beginPagesLogin(url, env.DB, siteIdentity(request)); } catch {
         return error('Sign-in is temporarily unavailable. Try again shortly.', 503);
+      }
+    }
+    if (url.pathname === '/api/bot/session') {
+      try { return await botSession(request, env); } catch (exception) {
+        console.error('Open play bot request failed:', exception.message);
+        return error('Open Play is temporarily unavailable. Try again shortly.', 503);
       }
     }
     const isCalendarApi = url.pathname === '/api/schedule' || url.pathname === '/api/admins';

@@ -18,6 +18,18 @@ Set the `OPEN_PLAY_ADMINS` Site environment variable to a comma-separated list o
 
 Create or reuse a Google OAuth Web application client. Add `https://ucla-open-play.jaredashman0209.chatgpt.site/auth/google/callback` as an authorized redirect URI. In the Site's environment settings, set `GOOGLE_CLIENT_ID` and store `GOOGLE_CLIENT_SECRET` as a secret. Publish with the updated settings to activate direct Google sign-in. The same callback serves both the Site and GitHub Pages. Use a consent-screen audience that includes the UCLA accounts that need to sign in.
 
+## Bot posts
+
+Picklebot (the court-booking script) tells the site about each tennis court it books at 6 PM or 7 PM, so the night shows up as Confirmed at `Sunset Rec Tennis Court 2` with its hours. To turn this on:
+
+1. Make a long random token, for example by running `node -e "console.log(crypto.randomUUID() + crypto.randomUUID())"`.
+2. In the Site's environment settings, store it as the secret `OPEN_PLAY_BOT_TOKEN`.
+3. Apply the new migration `migrations/0003_bot_hours_names.sql` to the D1 database.
+4. Deploy the Worker through Sites, then run `npm run publish:pages`.
+5. Give the same token to picklebot with `node picklebot.js save-openplay-token`. Never put the token in a file or in chat.
+
+The endpoint is `POST /api/bot/session` with the header `Authorization: Bearer <token>` and a JSON body like `{ "date": "2026-12-01", "hour": 18 }` (`hour` is the booked hour, 13 to 23). Without the secret set, the endpoint refuses every request.
+
 With Node.js 24 or later, run `npm ci` and `npm test`. The build writes the Worker and its deployment metadata to `dist/`. The tests use a disposable SQLite database and simulated identities. Hosted migrations are tracked under `migrations/`.
 
 The banner uses [Frank Schrader’s outdoor pickleball court photo](https://www.pexels.com/photo/empty-pickleball-court-with-net-in-summer-sun-29820786/) under the [Pexels License](https://www.pexels.com/license/). The blue background remains visible if the photo cannot load.

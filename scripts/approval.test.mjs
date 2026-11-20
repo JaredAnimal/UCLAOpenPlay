@@ -37,7 +37,7 @@ function setup(t, env = {}) {
     if (viewer.email) headers.set('oai-authenticated-user-email', viewer.email);
     if (token) headers.set('Authorization', `Bearer ${token}`);
     if (cookie) headers.set('Cookie', cookie);
-    headers.set('Origin', source);
+    if (source) headers.set('Origin', source);
     if (data) {
       headers.set('Content-Type', 'application/json');
     }
@@ -235,4 +235,54 @@ test('Google login checks the OAuth state, Google signature, and verified UCLA a
   assert.equal((await post(host, { date, action: 'approve', location: 'Tennis Court 2' })).status, 200);
   assert.equal((await post(maya, { date, action: 'join' })).status, 201);
   assert.deepEqual((await (await request({}, undefined, origin, maya)).json()).sessions[0].players, ['Maya L.']);
+});
+
+test('the bot endpoint needs its token and confirms a booked tennis court with the hours it holds', async t => {
+  const token = 'bot-secret-token';
+  const request = setup(t, { OPEN_PLAY_BOT_TOKEN: token });
+  const post = (body, options = { token }) => request({}, body, null, { path: '/api/bot/session', ...options });
+  const night = async () => (await (await request()).json()).sessions;
+  const court = 'Sunset Rec Tennis Court 2';
+
+  assert.equal((await post({ date, hour: 18 }, {})).status, 401);
+  assert.equal((await post({ date, hour: 18 }, { token: 'wrong' })).status, 401);
+  assert.equal((await setup(t)({}, { date, hour: 18 }, null, { path: '/api/bot/session', token })).status, 401);
+  assert.deepEqual(await night(), []);
+
+  assert.equal((await post({ date, hour: 'x' })).status, 400);
+  assert.equal((await post({ date, hour: 12 })).status, 400);
+  assert.equal((await post({ date, hour: 24 })).status, 400);
+  assert.equal((await post({ date: '2026-02-30', hour: 18 })).status, 400);
+  assert.equal((await post({ date: '2020-01-01', hour: 18 })).status, 400);
+  assert.equal((await post(undefined)).status, 405);
+  assert.deepEqual(await night(), []);
+
+  const first = await post({ date, hour: 18 });
+  assert.equal(first.status, 200);
+  assert.deepEqual(await first.json(), { date, time: '6–7 PM' });
+  assert.deepEqual(await night(), [{ date, status: 'confirmed', location: court, signupCount: 0, signedUp: false, time: '6–7 PM' }]);
+  assert.deepEqual(await (await post({ date, hour: 18 })).json(), { date, time: '6–7 PM' });
+  assert.deepEqual(await (await post({ date, hour: 19 })).json(), { date, time: '6–8 PM' });
+  assert.equal((await night()).length, 1);
+
+  const later = addDays(date, 1);
+  await post({ date: later, hour: 19 });
+  assert.deepEqual(await (await post({ date: later, hour: 18 })).json(), { date: later, time: '6–8 PM' });
+
+  const pending = addDays(date, 2);
+  const declined = addDays(date, 3);
+  await request(student, { date: pending, action: 'propose' });
+  await request(student, { date: declined, action: 'propose' });
+  await request(admin, { date: declined, action: 'decline' });
+  assert.equal((await post({ date: pending, hour: 19 })).status, 200);
+  assert.equal((await post({ date: declined, hour: 18 })).status, 200);
+  const sessions = await night();
+  assert.deepEqual(sessions.slice(2).map(({ date, status, location, time }) => ({ date, status, location, time })), [
+    { date: pending, status: 'confirmed', location: court, time: '7–8 PM' },
+    { date: declined, status: 'confirmed', location: court, time: '6–7 PM' },
+  ]);
+
+  assert.equal((await request(student, { date, action: 'join' })).status, 201);
+  await post({ date, hour: 18 });
+  assert.equal((await night())[0].signupCount, 1);
 });
