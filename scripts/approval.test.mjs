@@ -518,7 +518,8 @@ test('the bot endpoint needs its token and confirms a booked tennis court with t
   assert.deepEqual(await night(), []);
 
   assert.equal((await post({ date, hour: 'x' })).status, 400);
-  assert.equal((await post({ date, hour: 12 })).status, 400);
+  assert.equal((await post({ date, hour: 7 })).status, 400);
+  assert.equal((await post({ date, hour: '18' })).status, 400);
   assert.equal((await post({ date, hour: 24 })).status, 400);
   assert.equal((await post({ date: '2026-02-30', hour: 18 })).status, 400);
   assert.equal((await post({ date: '2020-01-01', hour: 18 })).status, 400);
@@ -533,6 +534,8 @@ test('the bot endpoint needs its token and confirms a booked tennis court with t
   assert.deepEqual(await (await post({ date, hour: 19 })).json(), { date, time: '6–8 PM' });
   assert.equal((await night()).length, 1);
 
+  assert.equal((await (await post({ date: addDays(date, 4), hour: 10 })).json()).time, '10–11 AM');
+
   const later = addDays(date, 1);
   await post({ date: later, hour: 19 });
   assert.deepEqual(await (await post({ date: later, hour: 18 })).json(), { date: later, time: '6–8 PM' });
@@ -545,7 +548,7 @@ test('the bot endpoint needs its token and confirms a booked tennis court with t
   assert.equal((await post({ date: pending, hour: 19 })).status, 200);
   assert.equal((await post({ date: declined, hour: 18 })).status, 200);
   const sessions = await night();
-  assert.deepEqual(sessions.slice(2).map(({ date, status, location, time }) => ({ date, status, location, time })), [
+  assert.deepEqual(sessions.slice(2, 4).map(({ date, status, location, time }) => ({ date, status, location, time })), [
     { date: pending, status: 'confirmed', location: court, time: '7–8 PM' },
     { date: declined, status: 'confirmed', location: court, time: '6–7 PM' },
   ]);

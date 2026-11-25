@@ -21,6 +21,7 @@ const adminFeedback = document.querySelector('#admin-feedback');
 const dateLabel = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
 let displayedProposals;
 let posting = false;
+let nights = new Map();
 
 function element(tag, text) {
   const node = document.createElement(tag);
@@ -101,6 +102,16 @@ function reviewForm({ date, startHour = 18, endHour = 20, location: court = '' }
   return form;
 }
 
+// An admin who posts over a student's proposal starts from its hours and court.
+function fillFromProposal() {
+  const night = nights.get(proposalDate.value);
+  if (night?.status !== 'pending') return;
+  setProposalHours(night.startHour ?? 18, night.endHour ?? 20);
+  proposalCourt.value = night.location || DEFAULT_COURT;
+}
+
+proposalDate.addEventListener('change', fillFromProposal);
+
 propose.addEventListener('click', async () => {
   if (!hasName() && !await askName()) return;
   const date = getSelectedDate();
@@ -109,6 +120,7 @@ propose.addEventListener('click', async () => {
   proposalDate.value = isSessionDate(date) && !sessionEnded(date, clock) ? date : '';
   setProposalHours(18, 20);
   proposalCourt.value = DEFAULT_COURT;
+  fillFromProposal();
   proposalFeedback.textContent = '';
   proposal.showModal();
 });
@@ -153,6 +165,7 @@ adminForm.addEventListener('submit', async event => {
 });
 
 window.addEventListener('openplay-schedule', ({ detail: { viewer, sessions } }) => {
+  nights = sessions;
   propose.hidden = !viewer.member;
   posting = Boolean(viewer.admins);
   propose.textContent = proposalTitle.textContent = posting ? 'Post a night' : 'Propose a night';

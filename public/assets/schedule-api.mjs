@@ -86,8 +86,10 @@ export async function fetchSchedule() {
     pagesLogin ??= finishPagesLogin();
     await pagesLogin;
   }
-  const data = await json(await request('/api/schedule', { token: pages ? localStorage.getItem(tokenKey) : null }));
-  if (pages && !data.viewer.signedIn) localStorage.removeItem(tokenKey);
+  const token = pages ? localStorage.getItem(tokenKey) : null;
+  const data = await json(await request('/api/schedule', { token }));
+  // Only the token this request used: another tab may have signed in meanwhile.
+  if (token && !data.viewer.signedIn && localStorage.getItem(tokenKey) === token) localStorage.removeItem(tokenKey);
   return data;
 }
 

@@ -146,7 +146,7 @@ async function botSession(request, env) {
   try { input = await request.json(); } catch { return error('Enter a valid request.', 400); }
   const { date, hour } = input ?? {};
   if (!isSessionDate(date) || sessionEnded(date, pacificClock())) return error('Choose a date that has not ended.', 400);
-  if (!Number.isInteger(hour) || hour < 13 || hour > 23) return error('Choose an hour from 13 to 23.', 400);
+  if (!validHours(hour, hour + 1)) return error('Choose an hour from 8 to 23.', 400);
   // Hours merge only into an already confirmed night; a proposal's or a cancelled night's hours give way to the bot's.
   // ponytail: min/max merge assumes adjacent hours; non-adjacent bookings would show one wide span.
   const saved = await env.DB.prepare(`

@@ -34,7 +34,7 @@ Picklebot (the court-booking script) tells the site about each tennis court it b
 
 A bot post always sets that night to Confirmed at `Sunset Rec Tennis Court 2`. It overwrites a location an admin typed and re-confirms a night an admin declined or cancelled. On a night that is not confirmed yet (a proposal, or a cancelled night), the hours become the hours the bot booked (a 6 PM booking shows only 6–7 PM until the 7 PM court is booked too). On an already confirmed night, including one an admin posted, the booked hour is added to its hours (6–7 PM plus a 7 PM booking shows 6–8 PM).
 
-The endpoint is `POST /api/bot/session` with the header `Authorization: Bearer <token>` and a JSON body like `{ "date": "2026-12-01", "hour": 18 }` (`hour` is the booked hour, 13 to 23). Without the secret set, the endpoint refuses every request.
+The endpoint is `POST /api/bot/session` with the header `Authorization: Bearer <token>` and a JSON body like `{ "date": "2026-12-01", "hour": 18 }` (`hour` is the booked hour, 8 to 23). Without the secret set, the endpoint refuses every request.
 
 With Node.js 24 or later, run `npm ci` and `npm test`. The build writes the Worker and its deployment metadata to `dist/`. The tests use a disposable SQLite database and simulated identities. Hosted migrations are tracked under `migrations/`.
 
