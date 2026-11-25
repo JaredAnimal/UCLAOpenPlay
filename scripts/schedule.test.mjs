@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { addDays, calendarStatus, currentWeek, displayName, isSessionDate, pacificClock, readSessions, sessionTime } from '../public/assets/schedule.mjs';
+import { addDays, calendarStatus, cleanName, currentWeek, displayName, isSessionDate, pacificClock, readSessions, sessionTime } from '../public/assets/schedule.mjs';
+
+test('a typed name is tidied, or refused when it is empty, too long, or has hidden or markup characters', () => {
+  assert.equal(cleanName('  Maya   Lopez '), 'Maya Lopez');
+  assert.equal(cleanName('José Ñúñez'), 'José Ñúñez');
+  assert.equal(cleanName("O'Neil-Smith Jr."), "O'Neil-Smith Jr.");
+  for (const bad of ['', '   ', 'A', '🎾🎾', 'a'.repeat(61), 'Maya​Lopez', '<b>Maya', 'Maya>', 42, null, undefined]) {
+    assert.equal(cleanName(bad), null, String(bad));
+  }
+  assert.equal(cleanName('a'.repeat(60)), 'a'.repeat(60));
+});
 
 test('hours and names read the way the calendar shows them', () => {
   assert.equal(sessionTime(18, 20), '6–8 PM');

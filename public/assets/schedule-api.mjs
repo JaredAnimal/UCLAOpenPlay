@@ -95,6 +95,10 @@ export async function updateSchedule(body) {
   return json(await request('/api/schedule', { token: pages ? localStorage.getItem(tokenKey) : null, body }));
 }
 
+export async function saveName(name) {
+  return json(await request('/api/name', { token: pages ? localStorage.getItem(tokenKey) : null, body: { name } }));
+}
+
 export async function addAdmin(email) {
   return json(await request('/api/admins', { token: pages ? localStorage.getItem(tokenKey) : null, body: { email } }));
 }

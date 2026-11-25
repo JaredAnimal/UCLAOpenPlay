@@ -1,4 +1,5 @@
 import { getSelectedDate, refresh, showDate } from './calendar.mjs';
+import { askName } from './account.mjs';
 import { addAdmin, updateSchedule } from './schedule-api.mjs';
 import { civilDate, isSessionDate, pacificClock, sessionEnded } from './schedule.mjs';
 
@@ -16,6 +17,7 @@ const adminForm = document.querySelector('#admin-form');
 const adminFeedback = document.querySelector('#admin-feedback');
 const dateLabel = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
 let displayedDates;
+let named = false;
 
 function element(tag, text) {
   const node = document.createElement(tag);
@@ -62,7 +64,8 @@ function reviewForm(date) {
   return form;
 }
 
-propose.addEventListener('click', () => {
+propose.addEventListener('click', async () => {
+  if (!named && !await askName()) return;
   const date = getSelectedDate();
   const clock = pacificClock();
   proposalDate.min = clock.date;
@@ -113,6 +116,7 @@ adminForm.addEventListener('submit', async event => {
 
 window.addEventListener('openplay-schedule', ({ detail: { viewer, sessions } }) => {
   propose.hidden = !viewer.member;
+  named = Boolean(viewer.name);
   approval.hidden = !viewer.admins;
   if (!viewer.admins) return;
   admins.replaceChildren(...viewer.admins.map(email => element('li', email)));

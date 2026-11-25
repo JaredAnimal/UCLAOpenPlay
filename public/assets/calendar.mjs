@@ -2,6 +2,7 @@ import {
   DAYS_PER_WEEK, RESERVATION_LEAD_DAYS, SESSION_TIME,
   pacificClock, civilDate, addDays, currentWeek, isCalendarDate, readSessions, calendarStatus, sessionEnded,
 } from './schedule.mjs';
+import { askName } from './account.mjs';
 import { bindAccountLink, fetchSchedule, updateSchedule } from './schedule-api.mjs';
 
 const calendar = document.querySelector('#days');
@@ -151,6 +152,7 @@ function renderSignup(session) {
     button.disabled = true;
     feedback.textContent = '';
     try {
+      if (!session.signedUp && !viewer.name && !await askName()) return;
       await updateSchedule({ date: session.date, action: session.signedUp ? 'leave' : 'join' });
       await refresh({ afterCurrent: true });
       feedback.textContent = session.signedUp ? 'Sign-up cancelled.' : 'You’re signed up.';
@@ -225,6 +227,7 @@ export function getSelectedDate() {
   return selectedDate;
 }
 
+window.addEventListener('openplay-name-saved', () => refresh({ afterCurrent: true }));
 previous.addEventListener('click', () => moveWindow(-DAYS_PER_WEEK));
 next.addEventListener('click', () => moveWindow(DAYS_PER_WEEK));
 today.addEventListener('click', () => {

@@ -19,6 +19,7 @@
       <nav aria-label="Main navigation">
         <a href="#schedule">Schedule</a>
         <a href="#rules">Court Rules</a>
+        <button id="name-button" class="account-link name-button" type="button" aria-label="Edit your name" aria-haspopup="dialog" hidden></button>
         <a id="account-link" class="account-link" href="/auth/login" target="_top" aria-label="Log in with a UCLA email">Log in</a>
       </nav>
     </div>
@@ -137,6 +138,19 @@
       <p>Choose a date. The session will show as tentative until approved.</p>
       <button class="rules-button" type="submit">Submit proposal</button>
       <p id="proposal-feedback" class="feedback" role="status"></p>
+    </form>
+  </dialog>
+
+  <dialog id="name-dialog" class="rules-dialog" aria-labelledby="name-title">
+    <header class="rules-heading">
+      <h2 id="name-title">Confirm your name</h2>
+      <form method="dialog"><button class="rules-close">Close</button></form>
+    </header>
+    <form id="name-form" class="proposal-form">
+      <label>Name <input name="name" autocomplete="name" maxlength="60" required autofocus></label>
+      <p>Other players see your first name and last initial.</p>
+      <button class="rules-button" type="submit">Save</button>
+      <p id="name-feedback" class="feedback" role="status"></p>
     </form>
   </dialog>
 

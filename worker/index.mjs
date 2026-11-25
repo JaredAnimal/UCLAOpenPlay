@@ -1,13 +1,15 @@
 import assets from 'open-play:assets';
-import { displayName, isSessionDate, pacificClock, sessionEnded, sessionTime } from '../public/assets/schedule.mjs';
+import { cleanName, displayName, isSessionDate, pacificClock, sessionEnded, sessionTime } from '../public/assets/schedule.mjs';
 import { handlePagesSession, pagesCors, pagesIdentity, pagesOrigin } from './pages-auth.mjs';
 import { credentialPattern, digest, uclaAddress } from './auth-primitives.mjs';
 import { finishGoogleLogin, finishGoogleLogout, googleIdentity, startGoogleLogin } from './google-auth.mjs';
 
 async function viewerFor(identity, env) {
-  const { id = null, member = null, name = null } = identity ?? {};
-  const viewer = { id, member, name, admins: null };
+  // `suggestedName` is Google's; `name` is the one saved in `members`. Signed-out viewers get neither suggestion nor name.
+  const { id = null, member = null, name: suggestedName } = identity ?? {};
+  const viewer = { id, member, name: null, suggestedName, admins: null };
   if (!member) return viewer;
+  viewer.name = (await env.DB.prepare('SELECT name FROM members WHERE email = ?').bind(member).first())?.name ?? null;
   const initialAdmins = (env.OPEN_PLAY_ADMINS ?? '').split(',').map(uclaAddress).filter(Boolean);
   const { results } = await env.DB.prepare('SELECT email FROM admins').bind().all();
   const admins = [...new Set([...initialAdmins, ...results.map(row => row.email)])].sort();
@@ -29,8 +31,10 @@ async function schedule(db, viewer) {
       CASE WHEN status = 'confirmed' THEN (SELECT COUNT(*) FROM signups WHERE signups.date = sessions.date) ELSE 0 END AS signupCount,
       status = 'confirmed' AND EXISTS (SELECT 1 FROM signups WHERE signups.date = sessions.date AND member = ?) AS signedUp,
       start_hour, end_hour,
-      CASE WHEN ? AND status = 'confirmed' THEN (SELECT json_group_array(name) FROM (
-        SELECT COALESCE(name, substr(member, 1, instr(member, '@') - 1)) AS name FROM signups WHERE signups.date = sessions.date ORDER BY rowid
+      CASE WHEN ? AND status = 'confirmed' THEN (SELECT json_group_array(json_array(saved, legacy, member)) FROM (
+        SELECT members.name AS saved, signups.name AS legacy, signups.member AS member
+        FROM signups LEFT JOIN members ON members.email = signups.member
+        WHERE signups.date = sessions.date ORDER BY signups.rowid
       )) END AS players
     FROM sessions
     ORDER BY date
@@ -40,9 +44,18 @@ async function schedule(db, viewer) {
     ...(location ? { location } : {}),
     signedUp: Boolean(signedUp),
     time: sessionTime(start_hour, end_hour),
-    ...(players ? { players: JSON.parse(players) } : {}),
+    // Old sign-ups kept their short name; a saved name wins, and with neither it is the email's local part.
+    ...(players ? { players: JSON.parse(players).map(([saved, legacy, member]) => saved ? displayName(saved, member) : legacy ?? displayName(null, member)) } : {}),
   }));
-  return json({ sessions, viewer: { signedIn: Boolean(viewer.id), member: Boolean(viewer.member), admins: viewer.admins } });
+  const { id, member, admins, name, suggestedName } = viewer;
+  return json({ sessions, viewer: { signedIn: Boolean(id), member: Boolean(member), admins, name, suggestedName } });
+}
+
+async function saveName(db, viewer, input) {
+  const name = cleanName(input);
+  if (!name) return error('Enter your name: 2 to 60 characters, with at least one letter.', 400);
+  await db.prepare('INSERT INTO members (email, name) VALUES (?, ?) ON CONFLICT(email) DO UPDATE SET name = excluded.name').bind(viewer.member, name).run();
+  return json({ name });
 }
 
 async function addAdmin(db, viewer, input) {
@@ -81,10 +94,10 @@ async function signup(db, viewer, date, action) {
     return json({ date });
   }
   const inserted = await db.prepare(`
-    INSERT INTO signups (date, member, name)
-    SELECT date, ?, ? FROM sessions WHERE date = ? AND status = 'confirmed'
+    INSERT INTO signups (date, member)
+    SELECT date, ? FROM sessions WHERE date = ? AND status = 'confirmed'
     ON CONFLICT(date, member) DO NOTHING RETURNING date
-  `).bind(viewer.member, displayName(viewer.name, viewer.member), date).first();
+  `).bind(viewer.member, date).first();
   if (inserted) return json(inserted, 201);
   const existing = await db.prepare('SELECT date FROM signups WHERE date = ? AND member = ?').bind(date, viewer.member).first();
   return existing ? json(existing) : error('Sign-ups open after an admin approves this session.', 409);
@@ -119,8 +132,7 @@ async function botSession(request, env) {
 
 async function handleCalendarApi(request, env, url, fromPages) {
   const viewer = await viewerFor(fromPages ? await pagesIdentity(request, env.DB) : await googleIdentity(request, env.DB), env);
-  const isAdminAction = url.pathname === '/api/admins';
-  if (request.method === 'GET' && !isAdminAction) return schedule(env.DB, viewer);
+  if (request.method === 'GET' && url.pathname === '/api/schedule') return schedule(env.DB, viewer);
   if (request.method !== 'POST') return error('Method not allowed.', 405);
   if (!viewer.member) return error('Log in with your UCLA email to continue.', 401);
   if ((!fromPages && request.headers.get('Origin') !== url.origin) || !request.headers.get('content-type')?.startsWith('application/json')) {
@@ -129,10 +141,12 @@ async function handleCalendarApi(request, env, url, fromPages) {
 
   let input;
   try { input = await request.json(); } catch { return error('Enter a valid request.', 400); }
-  if (isAdminAction) return addAdmin(env.DB, viewer, input?.email);
+  if (url.pathname === '/api/admins') return addAdmin(env.DB, viewer, input?.email);
+  if (url.pathname === '/api/name') return saveName(env.DB, viewer, input?.name);
   const { date, action, location } = input ?? {};
   if (!isSessionDate(date)) return error('Choose a date.', 400);
   if (sessionEnded(date, pacificClock())) return error('This date has already passed.', 400);
+  if ((action === 'propose' || action === 'join') && !viewer.name) return error('Confirm your name first.', 409);
 
   switch (action) {
     case 'propose': return propose(env.DB, viewer, date);
@@ -171,7 +185,7 @@ export default {
         return error('Open Play is temporarily unavailable. Try again shortly.', 503);
       }
     }
-    const isCalendarApi = url.pathname === '/api/schedule' || url.pathname === '/api/admins';
+    const isCalendarApi = ['/api/schedule', '/api/admins', '/api/name'].includes(url.pathname);
     const isPagesSession = url.pathname === '/api/pages/session' || url.pathname === '/api/pages/logout';
     if (isCalendarApi || isPagesSession) {
       const fromPages = request.headers.get('Origin') === pagesOrigin;

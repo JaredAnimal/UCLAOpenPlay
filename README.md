@@ -5,6 +5,7 @@ The public calendar shows Monday through Sunday. Any day can hold an open play s
 ## Proposals, approvals, and sign-ups
 
 - **Log in** with a Google account that has a verified UCLA email. Both `@ucla.edu` and the corresponding `@g.ucla.edu` address work. Other Google accounts are turned away, and the old ChatGPT sign-in is gone.
+- The first time you log in, confirm your name (Google's name is filled in). Other players see your first name and last initial, and you can edit it any time from the name button in the header. Signing up and proposing a night need a confirmed name. Names are saved per UCLA mailbox in the `members` table.
 - Select **Propose a night** to add a tentative date. The calendar shows when to check back for confirmation, three days before play.
 - Admins use **Session approvals** to approve a tentative night with its reserved facility and court, or decline the proposal.
 - Admins can add another UCLA email address from the **Admins** list. The list is visible to admins only.

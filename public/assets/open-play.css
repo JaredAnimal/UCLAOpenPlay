@@ -56,6 +56,7 @@ button:not(:disabled) { cursor: pointer; }
 .site-header nav a:hover { text-decoration-color: var(--blue); }
 .site-header nav .account-link { padding: .25rem .8rem; border: 1px solid var(--line); border-radius: .5rem; text-decoration: none; }
 .site-header nav .account-link:hover { background: var(--wash); border-color: var(--blue); }
+.site-header nav .name-button { min-height: 2.75rem; max-width: 9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: var(--white); color: var(--navy); font-weight: 700; }
 .rules-button { min-height: 2.75rem; padding: .35rem 1rem; border: 1px solid transparent; border-radius: .5rem; background: var(--gold); color: var(--navy); font-weight: 700; }
 .rules-button:hover { background: #f4c700; }
 
@@ -176,7 +177,9 @@ button:disabled { opacity: .65; }
   .frame { width: calc(100% - 2rem); }
   .header-inner { min-height: 4rem; }
   .brand { font-size: 1.125rem; }
-  .site-header nav a { font-size: .875rem; }
+  .site-header nav { flex-wrap: wrap; justify-content: flex-end; column-gap: .75rem; row-gap: 0; }
+  .site-header nav a, .site-header nav .name-button { font-size: .875rem; }
+  .site-header nav .name-button { max-width: 6.5rem; }
   .rules-button { padding-inline: .8rem; font-size: .875rem; }
   h1 span { display: block; }
   .hero-info { font-size: 1rem; margin-top: 1.15rem; }

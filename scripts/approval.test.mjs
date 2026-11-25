@@ -51,6 +51,10 @@ function setup(t, env = {}) {
       sqlite.prepare("INSERT INTO pages_sessions (credential_hash, user_id, member, name, expires_at, channel) VALUES (?, ?, ?, ?, ?, 'site')")
         .run(await digest(session), `google:${who.id}`, member, who.name ?? null, timestamp() + sessionLifetime);
       headers.set('Cookie', `${sessionName}=${session}`);
+      // A saved name unless the test passes `saved: null`; `name` is only what Google suggests.
+      if (who.saved !== null) {
+        sqlite.prepare('INSERT OR IGNORE INTO members (email, name) VALUES (?, ?)').run(member, who.saved ?? who.name ?? member.split('@')[0]);
+      }
     }
     if (token) headers.set('Authorization', `Bearer ${token}`);
     if (cookie) headers.set('Cookie', cookie);
@@ -103,7 +107,7 @@ test('UCLA proposals stay tentative until an admin approves; approved sessions a
   assert.equal((await request(admin, join)).status, 409);
   const anonymous = await (await request()).json();
   assert.deepEqual(anonymous.sessions, [{ date, status: 'pending', signupCount: 0, signedUp: false, time: '6–8 PM' }]);
-  assert.deepEqual(anonymous.viewer, { signedIn: false, member: false, admins: null });
+  assert.deepEqual(anonymous.viewer, { signedIn: false, member: false, admins: null, name: null });
   assert.deepEqual((await (await request(admin)).json()).viewer.admins, ['admin@ucla.edu']);
   assert.equal((await request(admin, approval)).status, 200);
   assert.equal((await request(admin, { date, action: 'decline' })).status, 409);
@@ -132,6 +136,63 @@ test('any weekday can hold a session; only members see who signed up', async t =
   const visitor = (await (await request()).json()).sessions[0];
   assert.equal('players' in visitor, false);
   assert.equal(visitor.signupCount, 1);
+});
+
+test('a name is confirmed once, shown to others as First L., and an edit reaches existing sign-ups', async t => {
+  const request = setup(t);
+  const nameApi = { path: '/api/name' };
+  const saveName = (who, name, source = origin) => request(who, { name }, source, nameApi);
+  const members = () => request.sqlite.prepare("SELECT COUNT(*) AS n FROM members WHERE email = 'maya@ucla.edu'").get().n;
+  const maya = { id: 'maya', email: 'maya@ucla.edu', name: 'Maya Lopez', saved: null };
+  const sam = { id: 'sam', email: 'sam@ucla.edu', saved: null };
+  const approval = { date, action: 'approve', location: 'Tennis Court 2' };
+  const viewerOf = async who => (await (await request(who)).json()).viewer;
+
+  assert.equal((await saveName(undefined, 'Maya Lopez')).status, 401);
+  assert.equal((await saveName(maya, 'Maya Lopez', 'https://other.test')).status, 403);
+  for (const bad of ['', '   ', 'A', '🎾🎾', 'x'.repeat(61), 'Maya​Lopez', '<b>Maya', 42, undefined]) {
+    assert.equal((await saveName(maya, bad)).status, 400, String(bad));
+  }
+  assert.equal(members(), 0);
+  assert.deepEqual(await viewerOf(maya), { signedIn: true, member: true, admins: null, name: null, suggestedName: 'Maya Lopez' });
+  assert.equal((await viewerOf(sam)).suggestedName, null);
+
+  assert.equal((await request(admin, { date, action: 'propose' })).status, 201);
+  assert.equal((await request(admin, approval)).status, 200);
+  for (const action of ['join', 'propose']) {
+    const refused = await request(maya, { date, action });
+    assert.equal(refused.status, 409);
+    assert.deepEqual(await refused.json(), { error: 'Confirm your name first.' });
+  }
+  assert.equal((await request(maya, { date, action: 'leave' })).status, 200);
+
+  assert.deepEqual(await (await saveName(maya, ' Maya   Lopez ')).json(), { name: 'Maya Lopez' });
+  assert.equal(members(), 1);
+  assert.deepEqual(await viewerOf(maya), { signedIn: true, member: true, admins: null, name: 'Maya Lopez', suggestedName: 'Maya Lopez' });
+  assert.equal((await viewerOf(sam)).name, null);
+  assert.equal((await request(maya, { date, action: 'join' })).status, 201);
+  assert.equal((await saveName(sam, 'Sam Park')).status, 200);
+  assert.equal((await request(sam, { date, action: 'join' })).status, 201);
+  request.sqlite.prepare('INSERT INTO signups (date, member, name) VALUES (?, ?, ?)').run(date, 'old@ucla.edu', 'Old P.');
+  request.sqlite.prepare('INSERT INTO signups (date, member) VALUES (?, ?)').run(date, 'bare@ucla.edu');
+  const players = async who => (await (await request(who)).json()).sessions[0].players;
+  assert.deepEqual(await players(maya), ['Maya L.', 'Sam P.', 'Old P.', 'bare']);
+
+  assert.equal((await saveName(maya, 'María José Núñez')).status, 200);
+  assert.deepEqual(await players(sam), ['María N.', 'Sam P.', 'Old P.', 'bare']);
+  assert.equal((await viewerOf(sam)).name, 'Sam Park');
+  assert.equal(request.sqlite.prepare('SELECT COUNT(*) AS n FROM signups WHERE name IS NOT NULL').get().n, 1);
+  assert.equal('players' in (await (await request()).json()).sessions[0], false);
+});
+
+test('admin actions and the bot never need a saved name', async t => {
+  const request = setup(t);
+  const bare = { ...admin, saved: null };
+  assert.equal((await request(bare, { date, action: 'propose' })).status, 409);
+  assert.equal((await request(student, { date, action: 'propose' })).status, 201);
+  assert.equal((await request(bare, { date, action: 'approve', location: 'Tennis Court 2' })).status, 200);
+  assert.equal((await request(bare, { email: 'new.admin@ucla.edu' }, origin, { path: '/api/admins' })).status, 200);
+  assert.equal(request.sqlite.prepare('SELECT COUNT(*) AS n FROM members WHERE email = ?').get('admin@ucla.edu').n, 0);
 });
 
 test('GitHub Pages redeems a one-time code from a Google sign-in and uses a separately revocable 90-day API session', async t => {
@@ -166,6 +227,11 @@ test('GitHub Pages redeems a one-time code from a Google sign-in and uses a sepa
   const { expires_at } = request.sqlite.prepare("SELECT expires_at FROM pages_sessions WHERE channel = 'pages' AND challenge IS NULL").get();
   assert.ok(Math.abs(expires_at - (timestamp() + 90 * 24 * 60 * 60)) <= 5);
   assert.equal((await request({}, { code, verifier }, pagesOrigin, exchange)).status, 401);
+  assert.equal((await request({}, proposal, pagesOrigin, { token })).status, 409);
+  const named = await request({}, { name: ' Pages  Admin ' }, pagesOrigin, { token, path: '/api/name' });
+  assert.deepEqual(await named.json(), { name: 'Pages Admin' });
+  assert.equal(named.headers.get('Access-Control-Allow-Origin'), pagesOrigin);
+  assert.equal((await request({}, undefined, pagesOrigin, { method: 'OPTIONS', path: '/api/name' })).status, 204);
   assert.equal((await request({}, proposal, pagesOrigin, { token })).status, 201);
   const signedIn = await (await request({}, undefined, pagesOrigin, { token })).json();
   assert.deepEqual(signedIn.viewer.admins, ['admin@ucla.edu']);
@@ -244,7 +310,7 @@ test('Google login posts a signed ID token back with no client secret; every fai
   assert.match(sessionOf(done), /; Path=\/; Max-Age=7776000; HttpOnly; Secure; SameSite=Lax$/);
   const session = { cookie: sessionOf(done).split(';')[0] };
   const viewer = (await (await request({}, undefined, origin, session)).json()).viewer;
-  assert.deepEqual(viewer, { signedIn: true, member: true, admins: ['admin@ucla.edu'] });
+  assert.deepEqual(viewer, { signedIn: true, member: true, admins: ['admin@ucla.edu'], name: null, suggestedName: null });
   assert.equal((await request({}, {}, origin, { path: '/auth/google/logout', cookie: session.cookie })).status, 200);
   assert.equal((await (await request({}, undefined, origin, session)).json()).viewer.signedIn, false);
 
@@ -303,6 +369,9 @@ test('Google login posts a signed ID token back with no client secret; every fai
   const post = (who, body) => request({}, body, origin, who);
   const host = await signIn('admin@ucla.edu');
   const maya = await signIn('maya@ucla.edu', 'Maya Lopez');
+  assert.equal((await (await request({}, undefined, origin, maya)).json()).viewer.suggestedName, 'Maya Lopez');
+  assert.equal((await post({ ...host, path: '/api/name' }, { name: 'Host Admin' })).status, 200);
+  assert.equal((await post({ ...maya, path: '/api/name' }, { name: 'Maya Lopez' })).status, 200);
   assert.equal((await post(host, { date, action: 'propose' })).status, 201);
   assert.equal((await post(host, { date, action: 'approve', location: 'Tennis Court 2' })).status, 200);
   assert.equal((await post(maya, { date, action: 'join' })).status, 201);

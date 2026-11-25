@@ -66,6 +66,14 @@ export function displayName(name, email) {
   return words.length === 1 ? words[0] : `${words[0]} ${words.at(-1)[0]}.`;
 }
 
+// A typed name with spaces collapsed, or null unless it has a letter, 2-60 characters, and no hidden characters or < >.
+export function cleanName(input) {
+  if (typeof input !== 'string') return null;
+  const name = input.trim().replace(/\s+/g, ' ');
+  const length = [...name].length;
+  return length >= 2 && length <= 60 && /\p{L}/u.test(name) && !/[\p{C}<>]/u.test(name) ? name : null;
+}
+
 export function currentWeek(date) {
   const weekday = civilDate(date).getUTCDay();
   const daysSinceMonday = (weekday - MONDAY + DAYS_PER_WEEK) % DAYS_PER_WEEK;
