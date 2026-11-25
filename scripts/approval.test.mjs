@@ -28,6 +28,7 @@ function setup(t, env = {}) {
   const sqlite = new DatabaseSync(':memory:');
   t.after(() => sqlite.close());
   sqlite.exec(sql);
+  const fault = {};
   const DB = {
     prepare(query) {
       const statement = sqlite.prepare(query);
@@ -37,7 +38,10 @@ function setup(t, env = {}) {
         },
       };
     },
-    batch: statements => statements.map(statement => statement.run()),
+    batch: statements => {
+      if (fault.batch) throw new Error('database down');
+      return statements.map(statement => statement.run());
+    },
   };
   return Object.assign(async (who = {}, data, source = origin, { base = origin, path = '/api/schedule', method = data ? 'POST' : 'GET', token, cookie, form, headers: extra } = {}) => {
     const headers = new Headers(extra);
@@ -55,7 +59,7 @@ function setup(t, env = {}) {
     if (form) headers.set('Content-Type', 'application/x-www-form-urlencoded');
     const body = form ? new URLSearchParams(form).toString() : data && JSON.stringify(data);
     return worker.fetch(new Request(`${base}${path}`, { method, headers, body }), { DB, OPEN_PLAY_ADMINS: 'admin@ucla.edu', ...env });
-  }, { sqlite });
+  }, { sqlite, fault });
 }
 
 // Google's fake side of the sign-in: a signed ID token posted to the callback with the state cookie.
@@ -270,6 +274,30 @@ test('Google login posts a signed ID token back with no client secret; every fai
   assert.equal(viaPages.cookie, `${stateName}=${viaPages.state}.${viaPages.nonce}.${'a'.repeat(64)}.${date}`);
   const back = refused(await side.finish(viaPages, refusals['wrong nonce']), 'pages refusal', 'google', pagesUrl);
   assert.equal(back.searchParams.get('date'), date);
+
+  const forgeries = {
+    'short state': value => value.slice(1),
+    'uppercase hex': value => value.toUpperCase(),
+    'extra segment': value => `${value}.extra`,
+  };
+  for (const [label, forge] of Object.entries(forgeries)) {
+    const attempt = await side.start(`/auth/google/start?date=${date}`);
+    refused(await side.finish(attempt, { cookie: `${stateName}=${forge(attempt.cookie.slice(stateName.length + 1))}` }), label);
+  }
+
+  const outage = request.fault;
+  t.mock.method(console, 'error', () => {});
+  const challenge = 'b'.repeat(64);
+  const sessionCount = () => request.sqlite.prepare('SELECT COUNT(*) AS n FROM pages_sessions').get().n;
+  const before = sessionCount();
+  for (const [label, path, calendar] of [['site', `/auth/google/start?date=${date}`, backendUrl], ['pages', `/auth/google/start?challenge=${challenge}&date=${date}`, pagesUrl]]) {
+    const attempt = await side.start(path);
+    outage.batch = true;
+    const failed = refused(await side.finish(attempt), `database down (${label})`, 'google', calendar);
+    outage.batch = false;
+    assert.equal(failed.searchParams.get('date'), date);
+  }
+  assert.equal(sessionCount(), before);
 
   const signIn = async (email, name) => ({ cookie: sessionOf(await side.finish(await side.start(), { email, name })).split(';')[0] });
   const post = (who, body) => request({}, body, origin, who);

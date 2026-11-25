@@ -95,18 +95,23 @@ export async function finishGoogleLogin(request, url, env) {
     return reject('google');
   }
 
-  if (login.challenge) {
-    const response = await redirectToPages(env.DB, login.challenge, identity, login.date);
-    response.headers.append('Set-Cookie', clearState);
-    return response;
+  try {
+    if (login.challenge) {
+      const response = await redirectToPages(env.DB, login.challenge, identity, login.date);
+      response.headers.append('Set-Cookie', clearState);
+      return response;
+    }
+    const session = randomCredential();
+    await env.DB.batch([
+      env.DB.prepare('DELETE FROM pages_sessions WHERE expires_at <= ?').bind(timestamp()),
+      env.DB.prepare(`INSERT INTO pages_sessions (credential_hash, user_id, member, name, expires_at, channel)
+        VALUES (?, ?, ?, ?, ?, 'site')`).bind(await digest(session), identity.id, identity.member, identity.name, timestamp() + sessionLifetime),
+    ]);
+    return redirect(calendarUrl(login, url), [setCookie(sessionCookie, session, sessionLifetime), clearState]);
+  } catch (exception) {
+    console.error('Google sign-in failed:', exception.message);
+    return reject('google');
   }
-  const session = randomCredential();
-  await env.DB.batch([
-    env.DB.prepare('DELETE FROM pages_sessions WHERE expires_at <= ?').bind(timestamp()),
-    env.DB.prepare(`INSERT INTO pages_sessions (credential_hash, user_id, member, name, expires_at, channel)
-      VALUES (?, ?, ?, ?, ?, 'site')`).bind(await digest(session), identity.id, identity.member, identity.name, timestamp() + sessionLifetime),
-  ]);
-  return redirect(calendarUrl(login, url), [setCookie(sessionCookie, session, sessionLifetime), clearState]);
 }
 
 export async function googleIdentity(request, db) {
