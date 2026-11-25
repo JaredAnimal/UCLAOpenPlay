@@ -31,35 +31,36 @@ async function finishPagesLogin() {
   sessionStorage.removeItem(verifierKey);
   try {
     const { token } = await json(await request('/api/pages/session', { body: { code, verifier } }));
-    sessionStorage.setItem(tokenKey, token);
+    localStorage.setItem(tokenKey, token);
   } catch (error) {
     document.querySelector('#schedule-feedback').textContent = error.message;
   }
 }
 
-function returnTo(date) {
-  return date ? `/?date=${encodeURIComponent(date)}#schedule` : '/';
-}
+const inAppBrowser = /Instagram|FBAN|FBAV|FB_IAB|FBIOS|Messenger|Threads|musical_ly|BytedanceWebview|TikTok|Snapchat|LinkedInApp|Twitter|Line\/|; wv\)/i;
 
-export function bindAccountLink(link, { signedIn, authProvider }, date) {
-  const googleLogout = !pages && signedIn && authProvider === 'google';
+export function bindAccountLink(link, { signedIn }, date) {
   const dateQuery = date ? `?date=${encodeURIComponent(date)}` : '';
-  link.href = pages || googleLogout ? '#schedule' : signedIn
-    ? `/signout-with-chatgpt?return_to=${encodeURIComponent(returnTo(date))}` : `/auth/login${dateQuery}`;
-  link.target = pages || googleLogout ? '_self' : '_top';
-  link.onclick = null;
-  if (!pages && !googleLogout) return;
+  link.href = pages || signedIn ? '#schedule' : `/auth/login${dateQuery}`;
+  link.target = pages || signedIn ? '_self' : '_top';
   link.onclick = async event => {
+    const feedback = document.querySelector('#schedule-feedback');
+    if (!signedIn && inAppBrowser.test(navigator.userAgent)) {
+      event.preventDefault();
+      feedback.textContent = 'Google sign-in doesn’t work inside this app. Open this page in Safari or Chrome.';
+      return;
+    }
+    if (!pages && !signedIn) return;
     event.preventDefault();
     if (signedIn) {
-      const token = pages ? sessionStorage.getItem(tokenKey) : null;
-      if (pages) sessionStorage.removeItem(tokenKey);
+      const token = pages ? localStorage.getItem(tokenKey) : null;
+      if (pages) localStorage.removeItem(tokenKey);
       try {
-        if (googleLogout) await json(await request('/auth/google/logout', { body: {} }));
+        if (!pages) await json(await request('/auth/google/logout', { body: {} }));
         else if (token) await json(await request('/api/pages/logout', { token, body: {} }));
       } catch (error) {
-        if (googleLogout) {
-          document.querySelector('#schedule-feedback').textContent = error.message;
+        if (!pages) {
+          feedback.textContent = error.message;
           return;
         }
       }
@@ -75,7 +76,7 @@ export function bindAccountLink(link, { signedIn, authProvider }, date) {
       if (date) url.searchParams.set('date', date);
       location.assign(url);
     } catch {
-      document.querySelector('#schedule-feedback').textContent = 'Couldn’t start sign-in. Try again.';
+      feedback.textContent = 'Couldn’t start sign-in. Try again.';
     }
   };
 }
@@ -85,15 +86,15 @@ export async function fetchSchedule() {
     pagesLogin ??= finishPagesLogin();
     await pagesLogin;
   }
-  const data = await json(await request('/api/schedule', { token: pages ? sessionStorage.getItem(tokenKey) : null }));
-  if (pages && !data.viewer.signedIn) sessionStorage.removeItem(tokenKey);
+  const data = await json(await request('/api/schedule', { token: pages ? localStorage.getItem(tokenKey) : null }));
+  if (pages && !data.viewer.signedIn) localStorage.removeItem(tokenKey);
   return data;
 }
 
 export async function updateSchedule(body) {
-  return json(await request('/api/schedule', { token: pages ? sessionStorage.getItem(tokenKey) : null, body }));
+  return json(await request('/api/schedule', { token: pages ? localStorage.getItem(tokenKey) : null, body }));
 }
 
 export async function addAdmin(email) {
-  return json(await request('/api/admins', { token: pages ? sessionStorage.getItem(tokenKey) : null, body: { email } }));
+  return json(await request('/api/admins', { token: pages ? localStorage.getItem(tokenKey) : null, body: { email } }));
 }

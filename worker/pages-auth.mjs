@@ -1,10 +1,9 @@
 import { pagesUrl } from '../public/assets/hosting.mjs';
 import { isSessionDate } from '../public/assets/schedule.mjs';
-import { credentialPattern, digest, randomCredential, timestamp } from './auth-primitives.mjs';
+import { credentialPattern, digest, randomCredential, sessionLifetime, timestamp } from './auth-primitives.mjs';
 
 export const pagesOrigin = new URL(pagesUrl).origin;
 const codeLifetime = 5 * 60;
-const sessionLifetime = 8 * 60 * 60;
 
 function reply(data, status = 200) {
   return Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
@@ -34,24 +33,6 @@ export async function pagesIdentity(request, db) {
   `).bind(hash, timestamp()).first();
 }
 
-export async function beginPagesLogin(url, db, identity) {
-  const challenge = url.searchParams.get('challenge') ?? '';
-  if (!credentialPattern.test(challenge)) return reply({ error: 'Start sign-in from the Open Play calendar.' }, 400);
-  const date = url.searchParams.get('date');
-  const returnTo = '/pages/login?' + new URLSearchParams({ challenge, ...(isSessionDate(date) && { date }) });
-  if (!identity.id) return Response.redirect(new URL(`/signin-with-chatgpt?return_to=${encodeURIComponent(returnTo)}`, url.origin));
-
-  if (!identity.member) {
-    const retry = `/signout-with-chatgpt?return_to=${encodeURIComponent(returnTo)}`;
-    return new Response(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>UCLA email required</title><main><h1>Log in with a UCLA email</h1><p>Use your @ucla.edu or @g.ucla.edu account to sign up for Open Play.</p><p><a href="${retry}" target="_top">Switch accounts</a></p><p><a href="${pagesUrl}">Back to the calendar</a></p></main></html>`, {
-      status: 403,
-      headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' },
-    });
-  }
-
-  return redirectToPages(db, challenge, identity, date);
-}
-
 export async function redirectToPages(db, challenge, identity, date) {
   const code = randomCredential();
   await db.batch([
@@ -62,7 +43,7 @@ export async function redirectToPages(db, challenge, identity, date) {
   const destination = new URL(pagesUrl);
   if (isSessionDate(date)) destination.searchParams.set('date', date);
   destination.hash = new URLSearchParams({ code });
-  return new Response(null, { status: 302, headers: { Location: destination.href, 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' } });
+  return new Response(null, { status: 303, headers: { Location: destination.href, 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' } });
 }
 
 export async function handlePagesSession(request, db, logout) {

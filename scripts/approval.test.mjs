@@ -6,6 +6,8 @@ import { exportJWK, generateKeyPair, SignJWT } from 'jose';
 import worker from '../dist/server/index.js';
 import { currentWeek, pacificClock, addDays } from '../public/assets/schedule.mjs';
 import { backendUrl, pagesUrl } from '../public/assets/hosting.mjs';
+import { digest, randomCredential, sessionLifetime, timestamp, uclaAddress } from '../worker/auth-primitives.mjs';
+import { googleClientId } from '../worker/google-auth.mjs';
 
 const origin = 'https://open-play.test';
 const date = addDays(currentWeek(pacificClock().date).first, 8);
@@ -14,7 +16,13 @@ const student = { id: 'student', email: 'player@ucla.edu' };
 const outside = { id: 'outsider', email: 'outsider@example.com' };
 const migrations = new URL('../migrations/', import.meta.url);
 const files = (await readdir(migrations)).filter(file => file.endsWith('.sql')).sort();
-const sql = (await Promise.all(files.map(file => readFile(new URL(file, migrations), 'utf8')))).join('\n');
+const scripts = await Promise.all(files.map(file => readFile(new URL(file, migrations), 'utf8')));
+const sql = scripts.join('\n');
+const google = 'https://accounts.google.com';
+const sessionName = '__Host-open-play-session';
+const stateName = '__Host-open-play-state';
+const { publicKey, privateKey } = await generateKeyPair('RS256');
+const key = { ...await exportJWK(publicKey), kid: 'test-key', alg: 'RS256' };
 
 function setup(t, env = {}) {
   const sqlite = new DatabaseSync(':memory:');
@@ -31,18 +39,46 @@ function setup(t, env = {}) {
     },
     batch: statements => statements.map(statement => statement.run()),
   };
-  return (viewer = {}, data, source = origin, { path = '/api/schedule', method = data ? 'POST' : 'GET', token, cookie } = {}) => {
-    const headers = new Headers();
-    if (viewer.id) headers.set('oai-authenticated-user-id', viewer.id);
-    if (viewer.email) headers.set('oai-authenticated-user-email', viewer.email);
+  return Object.assign(async (who = {}, data, source = origin, { base = origin, path = '/api/schedule', method = data ? 'POST' : 'GET', token, cookie, form, headers: extra } = {}) => {
+    const headers = new Headers(extra);
+    const member = uclaAddress(who.email);
+    if (who.id && member) {
+      const session = randomCredential();
+      sqlite.prepare("INSERT INTO pages_sessions (credential_hash, user_id, member, name, expires_at, channel) VALUES (?, ?, ?, ?, ?, 'site')")
+        .run(await digest(session), `google:${who.id}`, member, who.name ?? null, timestamp() + sessionLifetime);
+      headers.set('Cookie', `${sessionName}=${session}`);
+    }
     if (token) headers.set('Authorization', `Bearer ${token}`);
     if (cookie) headers.set('Cookie', cookie);
     if (source) headers.set('Origin', source);
-    if (data) {
-      headers.set('Content-Type', 'application/json');
-    }
-    const request = new Request(`${origin}${path}`, { method, headers, body: data && JSON.stringify(data) });
-    return worker.fetch(request, { DB, OPEN_PLAY_ADMINS: 'admin@ucla.edu', ...env });
+    if (data) headers.set('Content-Type', 'application/json');
+    if (form) headers.set('Content-Type', 'application/x-www-form-urlencoded');
+    const body = form ? new URLSearchParams(form).toString() : data && JSON.stringify(data);
+    return worker.fetch(new Request(`${base}${path}`, { method, headers, body }), { DB, OPEN_PLAY_ADMINS: 'admin@ucla.edu', ...env });
+  }, { sqlite });
+}
+
+// Google's fake side of the sign-in: a signed ID token posted to the callback with the state cookie.
+function googleSide(t, request) {
+  t.mock.method(globalThis, 'fetch', async input => {
+    assert.equal(String(input instanceof Request ? input.url : input), 'https://www.googleapis.com/oauth2/v3/certs');
+    return Response.json({ keys: [key] });
+  });
+  const idToken = (claims, { audience = googleClientId, expires = timestamp() + 120, signer = privateKey, kid = key.kid } = {}) =>
+    new SignJWT(claims).setProtectedHeader({ alg: 'RS256', kid }).setIssuer(google).setAudience(audience)
+      .setSubject('mock-google-id').setExpirationTime(expires).sign(signer);
+  const cookieValue = (response, name) => response.headers.getSetCookie().find(value => value.startsWith(`${name}=`));
+  return {
+    cookieValue,
+    async start(path = '/auth/google/start', base = origin) {
+      const response = await request({}, undefined, origin, { path, base });
+      const destination = new URL(response.headers.get('Location'));
+      return { response, destination, cookie: cookieValue(response, stateName).split(';')[0], state: destination.searchParams.get('state'), nonce: destination.searchParams.get('nonce') };
+    },
+    async finish(login, { email = 'Admin@g.ucla.edu', verified = true, name, claims, form, cookie = login.cookie, base = origin, ...options } = {}) {
+      const token = await idToken({ nonce: login.nonce, email, email_verified: verified, ...(name && { name }), ...claims }, options);
+      return request({}, undefined, google, { path: '/auth/google/callback', method: 'POST', base, cookie, form: { state: login.state, id_token: token, ...form } });
+    },
   };
 }
 
@@ -53,7 +89,7 @@ test('UCLA proposals stay tentative until an admin approves; approved sessions a
   const join = { date, action: 'join' };
   assert.equal((await request(undefined, proposal)).status, 401);
   assert.equal((await request({ email: admin.email }, proposal)).status, 401);
-  assert.equal((await request(outside, proposal)).status, 403);
+  assert.equal((await request(outside, proposal)).status, 401);
   assert.equal((await request(student, proposal, 'https://other.test')).status, 403);
   assert.equal((await request(student, { ...proposal, date: '2026-02-30' })).status, 400);
   assert.equal((await request(student, proposal)).status, 201);
@@ -63,11 +99,11 @@ test('UCLA proposals stay tentative until an admin approves; approved sessions a
   assert.equal((await request(admin, join)).status, 409);
   const anonymous = await (await request()).json();
   assert.deepEqual(anonymous.sessions, [{ date, status: 'pending', signupCount: 0, signedUp: false, time: '6–8 PM' }]);
-  assert.deepEqual(anonymous.viewer, { signedIn: false, member: false, admins: null, authProvider: 'chatgpt' });
+  assert.deepEqual(anonymous.viewer, { signedIn: false, member: false, admins: null });
   assert.deepEqual((await (await request(admin)).json()).viewer.admins, ['admin@ucla.edu']);
   assert.equal((await request(admin, approval)).status, 200);
   assert.equal((await request(admin, { date, action: 'decline' })).status, 409);
-  assert.equal((await request(outside, join)).status, 403);
+  assert.equal((await request(outside, join)).status, 401);
   assert.equal((await request(student, join)).status, 201);
   assert.equal((await request({ id: 'student-alias', email: 'player@g.ucla.edu' }, join)).status, 200);
   const count = (await (await request()).json()).sessions[0];
@@ -94,23 +130,25 @@ test('any weekday can hold a session; only members see who signed up', async t =
   assert.equal(visitor.signupCount, 1);
 });
 
-test('GitHub Pages redeems a one-time sign-in code and uses a separately revocable API session', async t => {
+test('GitHub Pages redeems a one-time code from a Google sign-in and uses a separately revocable 90-day API session', async t => {
   const request = setup(t);
+  const side = googleSide(t, request);
   const pagesOrigin = new URL(pagesUrl).origin;
   const verifier = '1'.repeat(64);
   const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
   const challenge = Buffer.from(bytes).toString('hex');
-  const login = { path: `/pages/login?challenge=${challenge}&date=${date}` };
   const exchange = { path: '/api/pages/session' };
   const proposal = { date, action: 'propose' };
-  const redirect = await request({}, undefined, origin, login);
-  assert.equal(new URL(redirect.headers.get('Location')).pathname, '/signin-with-chatgpt');
-  assert.equal((await request(outside, undefined, origin, login)).status, 403);
+  assert.equal((await request({}, undefined, origin, { path: '/pages/login' })).status, 400);
+  assert.equal((await request({}, undefined, origin, { path: '/pages/login?challenge=nope' })).status, 400);
+  const entry = new URL((await request({}, undefined, origin, { path: `/pages/login?challenge=${challenge}&date=${date}` })).headers.get('Location'));
+  assert.equal(entry.pathname + entry.search, `/auth/google/start?challenge=${challenge}&date=${date}`);
   assert.equal((await request(student, proposal, pagesOrigin)).status, 401);
   const preflight = await request({}, undefined, pagesOrigin, { method: 'OPTIONS' });
   assert.equal(preflight.status, 204);
   assert.equal(preflight.headers.get('Access-Control-Allow-Origin'), pagesOrigin);
-  const redirectBack = await request(admin, undefined, origin, login);
+  const redirectBack = await side.finish(await side.start(entry.pathname + entry.search));
+  assert.equal(redirectBack.status, 303);
   const destination = new URL(redirectBack.headers.get('Location'));
   assert.equal(destination.href.split('?')[0], pagesUrl);
   assert.equal(destination.searchParams.get('date'), date);
@@ -121,6 +159,8 @@ test('GitHub Pages redeems a one-time sign-in code and uses a separately revocab
   const accepted = await request({}, { code, verifier }, pagesOrigin, exchange);
   assert.equal(accepted.status, 200);
   const { token } = await accepted.json();
+  const { expires_at } = request.sqlite.prepare("SELECT expires_at FROM pages_sessions WHERE channel = 'pages' AND challenge IS NULL").get();
+  assert.ok(Math.abs(expires_at - (timestamp() + 90 * 24 * 60 * 60)) <= 5);
   assert.equal((await request({}, { code, verifier }, pagesOrigin, exchange)).status, 401);
   assert.equal((await request({}, proposal, pagesOrigin, { token })).status, 201);
   const signedIn = await (await request({}, undefined, pagesOrigin, { token })).json();
@@ -157,77 +197,81 @@ test('admins can grant another verified UCLA address access without disclosing t
   assert.equal((await (await request(nonAdmin)).json()).viewer.admins, null);
 });
 
-test('Google login checks the OAuth state, Google signature, and verified UCLA address on both hosts', async t => {
-  const clientId = 'fake-open-play.apps.googleusercontent.com';
-  const request = setup(t, { GOOGLE_CLIENT_ID: clientId, GOOGLE_CLIENT_SECRET: 'test-only' });
-  const { publicKey, privateKey } = await generateKeyPair('RS256');
-  const key = { ...await exportJWK(publicKey), kid: 'test-key', alg: 'RS256' };
-  let googleProfile;
-  let tokenCalls = 0;
-  t.mock.method(globalThis, 'fetch', async (input, options) => {
-    const url = typeof input === 'string' || input instanceof URL ? String(input) : input.url;
-    if (url === 'https://www.googleapis.com/oauth2/v3/certs') return Response.json({ keys: [key] });
-    assert.equal(url, 'https://oauth2.googleapis.com/token');
-    tokenCalls++;
-    assert.equal(options.body.get('client_id'), clientId);
-    assert.equal(options.body.get('redirect_uri'), `${backendUrl}/auth/google/callback`);
-    assert.match(options.body.get('code_verifier'), /^[a-f0-9]{64}$/);
-    const idToken = await new SignJWT(googleProfile).setProtectedHeader({ alg: 'RS256', kid: key.kid })
-      .setIssuer('https://accounts.google.com').setAudience(clientId).setSubject('mock-google-id').setExpirationTime('2m').sign(privateKey);
-    return Response.json({ id_token: idToken });
-  });
-  const loginAttempt = async (path, email = 'Admin@g.ucla.edu', verified = true, name) => {
-    const start = await request({}, undefined, origin, { path });
-    const google = new URL(start.headers.get('Location'));
-    assert.equal(google.origin, 'https://accounts.google.com');
-    assert.equal(google.searchParams.get('scope'), 'openid email profile');
-    assert.equal(google.searchParams.get('code_challenge_method'), 'S256');
-    const cookie = start.headers.getSetCookie()[0].split(';')[0];
-    assert.match(start.headers.getSetCookie()[0], /HttpOnly; Secure; SameSite=Lax/);
-    googleProfile = { nonce: google.searchParams.get('nonce'), email, email_verified: verified, ...(name && { name }) };
-    const callback = '/auth/google/callback?' + new URLSearchParams({ state: google.searchParams.get('state'), code: 'google-code' });
-    return { path: callback, cookie };
+test('Google login posts a signed ID token back with no client secret; every failure lands on the calendar', async t => {
+  const request = setup(t);
+  const side = googleSide(t, request);
+  const callback = '/auth/google/callback';
+  const sessionOf = response => side.cookieValue(response, sessionName);
+  const refused = (response, label, reason = 'google', calendar = backendUrl) => {
+    const to = new URL(response.headers.get('Location'));
+    assert.equal(response.status, 303, label);
+    assert.equal(to.origin + to.pathname, new URL(calendar).href, label);
+    assert.equal(to.searchParams.get('login_error'), reason, label);
+    assert.equal(sessionOf(response), undefined, label);
+    assert.match(side.cookieValue(response, stateName), /^__Host-open-play-state=; .*Max-Age=0/, label);
+    return to;
   };
-  assert.equal(new URL((await request({}, undefined, origin, { path: '/auth/login' })).headers.get('Location')).pathname, '/auth/google/start');
-  assert.deepEqual((await (await request(admin)).json()).viewer, { signedIn: false, member: false, admins: null, authProvider: 'google' });
+  const loginLink = new URL((await request({}, undefined, origin, { path: `/auth/login?date=${date}` })).headers.get('Location'));
+  assert.equal(loginLink.pathname + loginLink.search, `/auth/google/start?date=${date}`);
+  assert.equal((await request({}, undefined, origin, { path: '/auth/google/start?challenge=xyz' })).status, 400);
 
-  const first = await loginAttempt(`/auth/google/start?date=${date}`);
-  const withoutCookie = await request({}, undefined, origin, { path: first.path });
-  assert.equal(new URL(withoutCookie.headers.get('Location')).searchParams.get('login_error'), 'google');
-  assert.equal(tokenCalls, 0);
-  const confirmed = await request({}, undefined, origin, first);
-  const session = confirmed.headers.getSetCookie().find(value => value.startsWith('__Host-open-play-session=')).split(';')[0];
-  assert.equal(new URL(confirmed.headers.get('Location')).searchParams.get('date'), date);
-  assert.deepEqual((await (await request({}, undefined, origin, { cookie: session })).json()).viewer.admins, ['admin@ucla.edu']);
-  await request({}, undefined, origin, first);
-  assert.equal(tokenCalls, 1);
-  await request({}, {}, origin, { path: '/auth/google/logout', cookie: session });
-  assert.equal((await (await request({}, undefined, origin, { cookie: session })).json()).viewer.signedIn, false);
+  const login = await side.start(`/auth/google/start?date=${date}`);
+  assert.deepEqual(Object.fromEntries(login.destination.searchParams), {
+    client_id: googleClientId, redirect_uri: `${backendUrl}/auth/google/callback`, response_type: 'id_token', response_mode: 'form_post',
+    scope: 'openid email profile', prompt: 'select_account', state: login.state, nonce: login.nonce,
+  });
+  assert.equal(login.destination.origin, google);
+  assert.match(login.state, /^[a-f0-9]{64}$/);
+  assert.match(login.nonce, /^[a-f0-9]{64}$/);
+  assert.equal(login.cookie, `${stateName}=${login.state}.${login.nonce}..${date}`);
+  assert.match(side.cookieValue(login.response, stateName), /; Path=\/; Max-Age=600; HttpOnly; Secure; SameSite=None$/);
 
+  const local = await side.start('/auth/google/start', 'http://localhost:8791');
+  assert.equal(local.destination.searchParams.get('redirect_uri'), 'http://localhost:8791/auth/google/callback');
+  assert.equal(new URL((await side.finish(local, { base: 'http://localhost:8791' })).headers.get('Location')).origin, 'http://localhost:8791');
+
+  const done = await side.finish(login);
+  assert.equal(done.status, 303);
+  const home = new URL(done.headers.get('Location'));
+  assert.equal(home.origin + home.pathname, new URL(backendUrl).href);
+  assert.equal(home.searchParams.get('date'), date);
+  assert.equal(home.searchParams.has('login_error'), false);
+  assert.match(side.cookieValue(done, stateName), /^__Host-open-play-state=; .*Max-Age=0/);
+  assert.match(sessionOf(done), /; Path=\/; Max-Age=7776000; HttpOnly; Secure; SameSite=Lax$/);
+  const session = { cookie: sessionOf(done).split(';')[0] };
+  const viewer = (await (await request({}, undefined, origin, session)).json()).viewer;
+  assert.deepEqual(viewer, { signedIn: true, member: true, admins: ['admin@ucla.edu'] });
+  assert.equal((await request({}, {}, origin, { path: '/auth/google/logout', cookie: session.cookie })).status, 200);
+  assert.equal((await (await request({}, undefined, origin, session)).json()).viewer.signedIn, false);
+
+  const refusals = {
+    'no cookie': { cookie: null },
+    'wrong state': { form: { state: 'f'.repeat(64) } },
+    'wrong nonce': { claims: { nonce: 'e'.repeat(64) } },
+    'wrong audience': { audience: 'someone-else.apps.googleusercontent.com' },
+    expired: { expires: timestamp() - 60 },
+    'bad signature': { signer: (await generateKeyPair('RS256')).privateKey },
+    'unknown key': { kid: 'other-key' },
+    'not a token': { form: { id_token: 'garbage' } },
+    'oversize body': { form: { padding: 'x'.repeat(10001) } },
+  };
+  for (const [label, options] of Object.entries(refusals)) refused(await side.finish(await side.start(), options), label);
+  const denied = await side.start();
+  refused(await request({}, undefined, google, { path: callback, method: 'POST', cookie: denied.cookie, form: { state: denied.state, error: 'access_denied' } }), 'cancelled at Google');
+  const notForm = await side.start();
+  refused(await request({}, { state: notForm.state }, google, { path: callback, cookie: notForm.cookie }), 'json body');
+  const byGet = await side.start();
+  refused(await request({}, undefined, origin, { path: `${callback}?state=${byGet.state}`, cookie: byGet.cookie }), 'GET callback');
   for (const [email, verified] of [['student@example.com', true], ['student@ucla.edu', false]]) {
-    const attempt = await loginAttempt('/auth/google/start', email, verified);
-    const denied = await request({}, undefined, origin, attempt);
-    assert.equal(new URL(denied.headers.get('Location')).searchParams.get('login_error'), 'ucla');
+    refused(await side.finish(await side.start(), { email, verified }), email, 'ucla');
   }
 
-  const pagesOrigin = new URL(pagesUrl).origin;
-  const verifier = 'a'.repeat(64);
-  const challenge = Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))).toString('hex');
-  const startViaPages = await request({}, undefined, origin, { path: `/pages/login?challenge=${challenge}` });
-  const googleStart = new URL(startViaPages.headers.get('Location'));
-  assert.equal(googleStart.pathname, '/auth/google/start');
-  const attempt = await loginAttempt(googleStart.pathname + googleStart.search);
-  const callback = await request({}, undefined, origin, attempt);
-  const redirect = new URL(callback.headers.get('Location'));
-  assert.equal(redirect.origin + redirect.pathname, pagesUrl);
-  const code = new URLSearchParams(redirect.hash.slice(1)).get('code');
-  const { token } = await (await request({}, { code, verifier }, pagesOrigin, { path: '/api/pages/session' })).json();
-  assert.deepEqual((await (await request({}, undefined, pagesOrigin, { token })).json()).viewer.admins, ['admin@ucla.edu']);
+  const viaPages = await side.start(`/auth/google/start?challenge=${'a'.repeat(64)}&date=${date}`);
+  assert.equal(viaPages.cookie, `${stateName}=${viaPages.state}.${viaPages.nonce}.${'a'.repeat(64)}.${date}`);
+  const back = refused(await side.finish(viaPages, refusals['wrong nonce']), 'pages refusal', 'google', pagesUrl);
+  assert.equal(back.searchParams.get('date'), date);
 
-  const signIn = async (email, name) => {
-    const done = await request({}, undefined, origin, await loginAttempt('/auth/google/start', email, true, name));
-    return { cookie: done.headers.getSetCookie().find(value => value.startsWith('__Host-open-play-session=')).split(';')[0] };
-  };
+  const signIn = async (email, name) => ({ cookie: sessionOf(await side.finish(await side.start(), { email, name })).split(';')[0] });
   const post = (who, body) => request({}, body, origin, who);
   const host = await signIn('admin@ucla.edu');
   const maya = await signIn('maya@ucla.edu', 'Maya Lopez');
@@ -235,6 +279,23 @@ test('Google login checks the OAuth state, Google signature, and verified UCLA a
   assert.equal((await post(host, { date, action: 'approve', location: 'Tennis Court 2' })).status, 200);
   assert.equal((await post(maya, { date, action: 'join' })).status, 201);
   assert.deepEqual((await (await request({}, undefined, origin, maya)).json()).sessions[0].players, ['Maya L.']);
+});
+
+test('ChatGPT headers and sign-ins from before migration 0004 no longer sign anyone in', async t => {
+  const request = setup(t);
+  const headers = { 'oai-authenticated-user-id': 'chatgpt-user', 'oai-authenticated-user-email': 'admin@ucla.edu' };
+  assert.equal((await request({}, { date, action: 'propose' }, origin, { headers })).status, 401);
+  assert.equal((await (await request({}, undefined, origin, { headers })).json()).viewer.signedIn, false);
+
+  assert.equal(files[4], '0004_accounts.sql');
+  const old = new DatabaseSync(':memory:');
+  t.after(() => old.close());
+  old.exec(scripts.slice(0, 4).join('\n'));
+  old.prepare("INSERT INTO pages_sessions (credential_hash, user_id, member, expires_at, channel) VALUES ('old', 'chatgpt-user', 'admin@ucla.edu', 9999999999, 'site')").run();
+  old.exec(scripts[4]);
+  assert.equal(old.prepare('SELECT COUNT(*) AS n FROM pages_sessions').get().n, 0);
+  old.prepare("INSERT INTO members (email, name) VALUES ('admin@ucla.edu', 'Admin')").run();
+  assert.throws(() => old.prepare("INSERT INTO members (email, name) VALUES ('admin@ucla.edu', 'Again')").run());
 });
 
 test('the bot endpoint needs its token and confirms a booked tennis court with the hours it holds', async t => {

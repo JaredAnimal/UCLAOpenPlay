@@ -4,7 +4,7 @@ The public calendar shows Monday through Sunday. Any day can hold an open play s
 
 ## Proposals, approvals, and sign-ups
 
-- **Log in** with Google once OAuth is configured. Both `@ucla.edu` and the corresponding `@g.ucla.edu` address work. During setup, the existing UCLA email sign-in remains available.
+- **Log in** with a Google account that has a verified UCLA email. Both `@ucla.edu` and the corresponding `@g.ucla.edu` address work. Other Google accounts are turned away, and the old ChatGPT sign-in is gone.
 - Select **Propose a night** to add a tentative date. The calendar shows when to check back for confirmation, three days before play.
 - Admins use **Session approvals** to approve a tentative night with its reserved facility and court, or decline the proposal.
 - Admins can add another UCLA email address from the **Admins** list. The list is visible to admins only.
@@ -16,7 +16,9 @@ GitHub Pages serves the static frontend from the root of `gh-pages`. To publish 
 
 Set the `OPEN_PLAY_ADMINS` Site environment variable to a comma-separated list of initial UCLA admin emails. Additional admins are managed on the site and stored in D1. Keep real admin addresses out of source control.
 
-Create or reuse a Google OAuth Web application client. Add `https://ucla-open-play.jaredashman0209.chatgpt.site/auth/google/callback` as an authorized redirect URI. In the Site's environment settings, set `GOOGLE_CLIENT_ID` and store `GOOGLE_CLIENT_SECRET` as a secret. Publish with the updated settings to activate direct Google sign-in. The same callback serves both the Site and GitHub Pages. Use a consent-screen audience that includes the UCLA accounts that need to sign in.
+Sign-in needs no client secret and no Site setting. The Worker uses the public Google client ID in `worker/google-auth.mjs` and asks Google to post a signed ID token back to `/auth/google/callback`. That one callback serves both the Site and GitHub Pages. The `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` Site settings are no longer read, so they can be deleted. In the Google OAuth Web client, `https://ucla-open-play.jaredashman0209.chatgpt.site/auth/google/callback` must be an authorized redirect URI, and `http://localhost:8791/auth/google/callback` is also needed to test locally. Use a consent-screen audience that includes the UCLA accounts that need to sign in. Sign-in lasts 90 days.
+
+Sites applies migration `0004_accounts` itself when the Worker deploys: it adds the `members` table and signs everyone out once (the old ChatGPT sign-ins can't be used anymore). Do not run it by hand. Deploy the Worker before publishing Pages.
 
 ## Bot posts
 

@@ -29,6 +29,13 @@
       "when": 1795285171107,
       "tag": "0003_bot_hours_names",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1795640000000,
+      "tag": "0004_accounts",
+      "breakpoints": true
     }
   ]
 }

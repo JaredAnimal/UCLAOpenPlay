@@ -138,7 +138,7 @@ function renderSignup(session) {
   }
   if (sessionEnded(session.date, clock)) return;
   if (!viewer.member) {
-    const link = element('a', viewer.signedIn ? 'Switch to a UCLA account to sign up' : 'Log in with UCLA email to sign up', 'signup-login');
+    const link = element('a', 'Log in with UCLA email to sign up', 'signup-login');
     bindAccountLink(link, viewer, session.date);
     detail.append(link);
     return;
@@ -197,7 +197,7 @@ async function loadSchedule() {
     viewer = data.viewer;
     accountLink.textContent = viewer.signedIn ? 'Sign out' : 'Log in';
     bindAccountLink(accountLink, viewer);
-    accountLink.setAttribute('aria-label', viewer.signedIn ? 'Sign out' : viewer.authProvider === 'google' ? 'Log in with Google using a UCLA email' : 'Log in with a UCLA email');
+    accountLink.setAttribute('aria-label', viewer.signedIn ? 'Sign out' : 'Log in with Google using a UCLA email');
     window.dispatchEvent(new CustomEvent('openplay-schedule', { detail: { viewer, sessions } }));
     loadState = 'ready';
   } catch (error) {
