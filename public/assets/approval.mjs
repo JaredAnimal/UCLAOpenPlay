@@ -22,6 +22,7 @@ const dateLabel = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'lo
 let displayedProposals;
 let posting = false;
 let nights = new Map();
+let filledFromProposal = false;
 
 function element(tag, text) {
   const node = document.createElement(tag);
@@ -102,12 +103,16 @@ function reviewForm({ date, startHour = 18, endHour = 20, location: court = '' }
   return form;
 }
 
-// An admin who posts over a student's proposal starts from its hours and court.
+// An admin who posts over a student's proposal starts from its hours and court; moving to another date drops them.
 function fillFromProposal() {
   const night = nights.get(proposalDate.value);
-  if (night?.status !== 'pending') return;
-  setProposalHours(night.startHour ?? 18, night.endHour ?? 20);
-  proposalCourt.value = night.location || DEFAULT_COURT;
+  const pending = posting && night?.status === 'pending';
+  if (pending || filledFromProposal) {
+    const { startHour = 18, endHour = 20, location = DEFAULT_COURT } = pending ? night : {};
+    setProposalHours(startHour, endHour);
+    proposalCourt.value = location;
+  }
+  filledFromProposal = pending;
 }
 
 proposalDate.addEventListener('change', fillFromProposal);
