@@ -32,6 +32,10 @@ test('a typed name is tidied, or refused when it is empty, too long, or has hidd
   assert.equal(cleanName('a'.repeat(60)), 'a'.repeat(60));
 });
 
+test('a last name shortens to a whole character, even an emoji', () => {
+  assert.equal(displayName('Maya 🎾', 'maya@ucla.edu'), 'Maya 🎾.');
+});
+
 test('hours and names read the way the calendar shows them', () => {
   assert.equal(sessionTime(18, 20), '6–8 PM');
   assert.equal(sessionTime(18, 19), '6–7 PM');
@@ -82,9 +86,9 @@ test('sessions keep their hours and sign-up names, with defaults', () => {
 
 test('the reservation check uses Pacific calendar days through daylight-saving transitions', () => {
   assert.equal(addDays('2026-11-03', -3), '2026-10-31');
-  assert.deepEqual(pacificClock(new Date('2026-11-02T04:00:00Z')), { date: '2026-11-01', hour: 20 });
-  assert.deepEqual(pacificClock(new Date('2026-11-02T08:00:00Z')), { date: '2026-11-02', hour: 0 });
-  assert.deepEqual(pacificClock(new Date('2026-11-01T04:00:00Z')), { date: '2026-10-31', hour: 21 });
+  assert.deepEqual(pacificClock(new Date('2026-11-02T04:00:00Z')), { date: '2026-11-01' });
+  assert.deepEqual(pacificClock(new Date('2026-11-02T08:00:00Z')), { date: '2026-11-02' });
+  assert.deepEqual(pacificClock(new Date('2026-11-01T04:00:00Z')), { date: '2026-10-31' });
 });
 
 test('invalid records cannot imply a session is booked', () => {
@@ -94,10 +98,10 @@ test('invalid records cannot imply a session is booked', () => {
   assert.throws(() => readSessions([session, session]), /Duplicate/);
 });
 
-test('unconfirmed sessions expire at 8 PM Pacific without changing confirmed or cancelled sessions', () => {
+test('unconfirmed sessions expire when their Pacific day is over, without changing confirmed or cancelled sessions', () => {
   const session = { date: '2026-11-24', status: 'pending' };
-  assert.equal(calendarStatus(session.date, session, { date: session.date, hour: 19 }).label, 'Tentative');
-  const clock = { date: session.date, hour: 20 };
+  assert.equal(calendarStatus(session.date, session, { date: session.date }).label, 'Tentative');
+  const clock = { date: '2026-11-25' };
   assert.equal(calendarStatus(session.date, session, clock).label, 'Not confirmed');
   assert.equal(calendarStatus(session.date, { ...session, status: 'confirmed' }, clock).label, 'Confirmed');
   assert.equal(calendarStatus(session.date, { ...session, status: 'cancelled' }, clock).label, 'Cancelled');

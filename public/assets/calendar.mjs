@@ -172,7 +172,8 @@ function renderCancel(session) {
   const button = element('button', 'Cancel night', 'rules-close cancel-night');
   let armed = false;
   button.type = 'button';
-  button.addEventListener('click', async () => {
+  button.addEventListener('click', async event => {
+    if (event.detail > 1) return;
     if (!armed) {
       armed = true;
       button.textContent = 'Yes, cancel this night';
@@ -205,7 +206,7 @@ function moveWindow(offset) {
 
 function updateClock() {
   const nextClock = pacificClock();
-  if (nextClock.date === clock.date && nextClock.hour === clock.hour) return;
+  if (nextClock.date === clock.date) return;
   const initialWeek = currentWeek(clock.date);
   if (firstDate === initialWeek.first && selectedDate === initialWeek.selected) {
     ({ first: firstDate, selected: selectedDate } = currentWeek(nextClock.date));

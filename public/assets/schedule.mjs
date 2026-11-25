@@ -11,17 +11,15 @@ const localClock = new Intl.DateTimeFormat('en-CA', {
   year: 'numeric',
   month: '2-digit',
   day: '2-digit',
-  hour: '2-digit',
-  hourCycle: 'h23',
 });
 const validStatuses = new Set(['pending', 'confirmed', 'cancelled']);
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 
 export function pacificClock(now = new Date()) {
-  const { year, month, day, hour } = Object.fromEntries(
+  const { year, month, day } = Object.fromEntries(
     localClock.formatToParts(now).map(({ type, value }) => [type, value]),
   );
-  return { date: `${year}-${month}-${day}`, hour: Number(hour) };
+  return { date: `${year}-${month}-${day}` };
 }
 
 export function civilDate(date) {
@@ -43,8 +41,9 @@ export function isCalendarDate(date) {
 // Any day can hold a session: the bot posts the days it books, and people can propose any night.
 export const isSessionDate = isCalendarDate;
 
+// A night can run until midnight, so it stays open for the whole day.
 export function sessionEnded(date, clock) {
-  return date < clock.date || (date === clock.date && clock.hour >= 20);
+  return date < clock.date;
 }
 
 function hourLabel(hour) {
@@ -74,7 +73,7 @@ export function sessionTime(startHour, endHour) {
 export function displayName(name, email) {
   const words = typeof name === 'string' ? name.trim().split(/\s+/).filter(Boolean) : [];
   if (!words.length) return email.split('@')[0];
-  return words.length === 1 ? words[0] : `${words[0]} ${words.at(-1)[0]}.`;
+  return words.length === 1 ? words[0] : `${words[0]} ${[...words.at(-1)][0]}.`;
 }
 
 // A typed name with spaces collapsed, or null unless it has a letter, 2-60 characters, and no hidden characters or < >.

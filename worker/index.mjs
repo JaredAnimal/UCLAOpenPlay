@@ -4,7 +4,9 @@ import { handlePagesSession, pagesCors, pagesIdentity, pagesOrigin } from './pag
 import { credentialPattern, digest, uclaAddress } from './auth-primitives.mjs';
 import { finishGoogleLogin, finishGoogleLogout, googleIdentity, startGoogleLogin } from './google-auth.mjs';
 
-async function viewerFor(identity, env) {
+async function viewerFor(found, env) {
+  // Only Google sign-ins count; a session row from any other source signs nobody in.
+  const identity = found?.id?.startsWith('google:') ? found : null;
   // `suggestedName` is Google's; `name` is the one saved in `members`. Signed-out viewers get neither suggestion nor name.
   const { id = null, member = null, name: suggestedName } = identity ?? {};
   const viewer = { id, member, name: null, suggestedName, admins: null };

@@ -264,6 +264,31 @@ test('nights carry hours and a court: students propose, admins post, approve and
   assert.equal((await request(admin, { date: '2020-01-01', action: 'cancel' })).status, 400);
 });
 
+test('a night that runs until midnight is still open at 8:05 PM on its day', async t => {
+  const at = offset => new Date(`${date}T20:05:00${offset}`);
+  const evening = [at('-08:00'), at('-07:00')].find(time => time.toLocaleString('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', hourCycle: 'h23' }) === '20');
+  t.mock.timers.enable({ apis: ['Date'], now: evening });
+  assert.equal(pacificClock().date, date);
+  const request = setup(t);
+  assert.equal((await request(admin, { date, action: 'propose', startHour: 21, endHour: 23 })).status, 201);
+  assert.equal((await request(student, { date, action: 'join' })).status, 201);
+  assert.equal((await request(admin, { date, action: 'cancel' })).status, 200);
+});
+
+test('a session row that is not from a Google sign-in signs nobody in, on the Site cookie or a Pages token', async t => {
+  const request = setup(t);
+  const pagesOrigin = new URL(pagesUrl).origin;
+  const site = randomCredential();
+  const pages = randomCredential();
+  const insert = request.sqlite.prepare('INSERT INTO pages_sessions (credential_hash, user_id, member, expires_at, channel) VALUES (?, ?, ?, ?, ?)');
+  insert.run(await digest(site), 'chatgpt-1', 'admin@ucla.edu', timestamp() + 3600, 'site');
+  insert.run(await digest(pages), 'chatgpt-1', 'admin@ucla.edu', timestamp() + 3600, 'pages');
+  for (const [label, source, options] of [['site', origin, { cookie: `${sessionName}=${site}` }], ['pages', pagesOrigin, { token: pages }]]) {
+    assert.equal((await request({}, { date, action: 'propose' }, source, options)).status, 401, label);
+    assert.equal((await (await request({}, undefined, source, options)).json()).viewer.signedIn, false, label);
+  }
+});
+
 test('the bot takes its own hours unless an admin-confirmed night already has some', async t => {
   const token = 'bot-secret-token';
   const request = setup(t, { OPEN_PLAY_BOT_TOKEN: token });
