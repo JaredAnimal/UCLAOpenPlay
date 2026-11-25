@@ -1,6 +1,26 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { addDays, calendarStatus, cleanName, currentWeek, displayName, isSessionDate, pacificClock, readSessions, sessionTime } from '../public/assets/schedule.mjs';
+import { DEFAULT_COURT, addDays, calendarStatus, cleanName, currentWeek, displayName, hourText, isSessionDate, pacificClock, readSessions, sessionTime, validHours } from '../public/assets/schedule.mjs';
+
+test('hours are whole numbers from 8 AM to midnight with the end after the start', () => {
+  assert.equal(DEFAULT_COURT, 'Sunset Rec Tennis Court 2');
+  assert.equal(validHours(18, 20), true);
+  assert.equal(validHours(8, 24), true);
+  for (const [start, end] of [[7, 9], [18, 18], [20, 18], [18, 25], ['18', 20], [18, null], [18.5, 20], [undefined, 20]]) {
+    assert.equal(validHours(start, end), false, `${start}-${end}`);
+  }
+  assert.deepEqual([8, 12, 18, 24].map(hourText), ['8 AM', '12 PM', '6 PM', '12 AM']);
+});
+
+test('a pending night keeps the hours an admin is sent, and drops anything that is not a number', () => {
+  const sessions = readSessions([
+    { date: '2026-11-25', status: 'pending', startHour: 19, endHour: 21, location: 'Court 5' },
+    { date: '2026-11-26', status: 'pending', startHour: '19' },
+  ]);
+  const proposed = sessions.get('2026-11-25');
+  assert.deepEqual([proposed.startHour, proposed.endHour, proposed.location], [19, 21, 'Court 5']);
+  assert.deepEqual([sessions.get('2026-11-26').startHour, sessions.get('2026-11-26').endHour], [undefined, undefined]);
+});
 
 test('a typed name is tidied, or refused when it is empty, too long, or has hidden or markup characters', () => {
   assert.equal(cleanName('  Maya   Lopez '), 'Maya Lopez');

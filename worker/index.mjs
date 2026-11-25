@@ -1,5 +1,5 @@
 import assets from 'open-play:assets';
-import { cleanName, displayName, isSessionDate, pacificClock, sessionEnded, sessionTime } from '../public/assets/schedule.mjs';
+import { DEFAULT_COURT, cleanName, displayName, isSessionDate, pacificClock, sessionEnded, sessionTime, validHours } from '../public/assets/schedule.mjs';
 import { handlePagesSession, pagesCors, pagesIdentity, pagesOrigin } from './pages-auth.mjs';
 import { credentialPattern, digest, uclaAddress } from './auth-primitives.mjs';
 import { finishGoogleLogin, finishGoogleLogout, googleIdentity, startGoogleLogin } from './google-auth.mjs';
@@ -27,21 +27,24 @@ function error(message, status) {
 
 async function schedule(db, viewer) {
   const { results } = await db.prepare(`
-    SELECT date, status, CASE WHEN status = 'confirmed' THEN location END AS location,
+    SELECT date, status,
+      CASE WHEN status = 'confirmed' OR (?3 AND status = 'pending') THEN location END AS location,
       CASE WHEN status = 'confirmed' THEN (SELECT COUNT(*) FROM signups WHERE signups.date = sessions.date) ELSE 0 END AS signupCount,
-      status = 'confirmed' AND EXISTS (SELECT 1 FROM signups WHERE signups.date = sessions.date AND member = ?) AS signedUp,
+      status = 'confirmed' AND EXISTS (SELECT 1 FROM signups WHERE signups.date = sessions.date AND member = ?1) AS signedUp,
       start_hour, end_hour,
-      CASE WHEN ? AND status = 'confirmed' THEN (SELECT json_group_array(json_array(saved, legacy, member)) FROM (
+      CASE WHEN ?2 AND status = 'confirmed' THEN (SELECT json_group_array(json_array(saved, legacy, member)) FROM (
         SELECT members.name AS saved, signups.name AS legacy, signups.member AS member
         FROM signups LEFT JOIN members ON members.email = signups.member
         WHERE signups.date = sessions.date ORDER BY signups.rowid
       )) END AS players
     FROM sessions
     ORDER BY date
-  `).bind(viewer.member, viewer.member ? 1 : 0).all();
+  `).bind(viewer.member, viewer.member ? 1 : 0, viewer.admins ? 1 : 0).all();
   const sessions = results.map(({ location, signedUp, start_hour, end_hour, players, ...session }) => ({
     ...session,
     ...(location ? { location } : {}),
+    // Only admins see a pending proposal's hours and court (to review them); everyone sees the `time`.
+    ...(viewer.admins && session.status === 'pending' && start_hour ? { startHour: start_hour, endHour: end_hour } : {}),
     signedUp: Boolean(signedUp),
     time: sessionTime(start_hour, end_hour),
     // Old sign-ups kept their short name; a saved name wins, and with neither it is the email's local part.
@@ -68,24 +71,47 @@ async function addAdmin(db, viewer, input) {
   return json({ email });
 }
 
-async function propose(db, viewer, date) {
+// Hours and court for a night. A field left out takes its `kept` value; a field that is sent must be valid (null is not "left out").
+function nightFields(kept, { startHour = kept.startHour, endHour = kept.endHour, location = kept.location }) {
+  const court = typeof location === 'string' ? location.trim() : '';
+  if (!validHours(startHour, endHour)) return { problem: 'Choose hours from 8 AM to 12 AM, with the end after the start.' };
+  if (!court || court.length > 160) return { problem: 'Enter the reserved facility and court, up to 160 characters.' };
+  return { startHour, endHour, court };
+}
+
+// A student's post is a pending proposal. An admin's confirms the night at once, unless it is already confirmed.
+async function propose(db, viewer, date, input) {
+  const night = nightFields({ startHour: 18, endHour: 20, location: DEFAULT_COURT }, input);
+  if (night.problem) return error(night.problem, 400);
+  const posting = Boolean(viewer.admins);
   const saved = await db.prepare(`
-    INSERT INTO sessions (date, proposed_by) VALUES (?, ?)
-    ON CONFLICT(date) DO NOTHING RETURNING date
-  `).bind(date, viewer.id).first();
+    INSERT INTO sessions (date, status, location, proposed_by, reviewed_by, start_hour, end_hour) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+    ON CONFLICT(date) DO UPDATE SET status = excluded.status, location = excluded.location, reviewed_by = excluded.reviewed_by,
+      start_hour = excluded.start_hour, end_hour = excluded.end_hour
+    WHERE excluded.status = 'confirmed' AND sessions.status <> 'confirmed'
+    RETURNING date
+  `).bind(date, posting ? 'confirmed' : 'pending', night.court, viewer.id, posting ? viewer.id : null, night.startHour, night.endHour).first();
   return saved ? json(saved, 201) : error('This date already has a session.', 409);
 }
 
-async function review(db, viewer, date, action, input) {
-  if (!viewer.admins) return error('An admin must review this session.', 403);
-  const location = typeof input === 'string' ? input.trim() : '';
-  const approving = action === 'approve';
-  if (approving && (!location || location.length > 160)) return error('Enter the reserved facility and court.', 400);
+async function approve(db, viewer, date, input) {
+  const row = await db.prepare('SELECT location, start_hour, end_hour FROM sessions WHERE date = ?').bind(date).first();
+  const night = nightFields({ startHour: row?.start_hour ?? 18, endHour: row?.end_hour ?? 20, location: row?.location ?? undefined }, input);
+  if (night.problem) return error(night.problem, 400);
   const saved = await db.prepare(`
-    UPDATE sessions SET status = ?, location = ?, reviewed_by = ?
+    UPDATE sessions SET status = 'confirmed', location = ?, start_hour = ?, end_hour = ?, reviewed_by = ?
     WHERE date = ? AND status = 'pending' RETURNING date
-  `).bind(approving ? 'confirmed' : 'cancelled', approving ? location : null, viewer.id, date).first();
+  `).bind(night.court, night.startHour, night.endHour, viewer.id, date).first();
   return saved ? json(saved) : error('This session has already been reviewed or was removed.', 409);
+}
+
+// Declining a pending proposal and cancelling a confirmed night both end as 'cancelled'; sign-ups are kept.
+async function close(db, viewer, date, from) {
+  const saved = await db.prepare(`
+    UPDATE sessions SET status = 'cancelled', location = NULL, reviewed_by = ?
+    WHERE date = ? AND status = ? RETURNING date
+  `).bind(viewer.id, date, from).first();
+  return saved ? json(saved) : error(from === 'pending' ? 'This session has already been reviewed or was removed.' : 'Only a confirmed night can be cancelled.', 409);
 }
 
 async function signup(db, viewer, date, action) {
@@ -99,11 +125,12 @@ async function signup(db, viewer, date, action) {
     ON CONFLICT(date, member) DO NOTHING RETURNING date
   `).bind(viewer.member, date).first();
   if (inserted) return json(inserted, 201);
-  const existing = await db.prepare('SELECT date FROM signups WHERE date = ? AND member = ?').bind(date, viewer.member).first();
+  const existing = await db.prepare(`
+    SELECT signups.date FROM signups JOIN sessions ON sessions.date = signups.date
+    WHERE signups.date = ? AND member = ? AND status = 'confirmed'
+  `).bind(date, viewer.member).first();
   return existing ? json(existing) : error('Sign-ups open after an admin approves this session.', 409);
 }
-
-const BOT_LOCATION = 'Sunset Rec Tennis Court 2';
 
 // Picklebot (server to server, no Origin) reports a booked court hour; the night becomes confirmed.
 async function botSession(request, env) {
@@ -118,15 +145,16 @@ async function botSession(request, env) {
   const { date, hour } = input ?? {};
   if (!isSessionDate(date) || sessionEnded(date, pacificClock())) return error('Choose a date that has not ended.', 400);
   if (!Number.isInteger(hour) || hour < 13 || hour > 23) return error('Choose an hour from 13 to 23.', 400);
+  // Hours merge only into an already confirmed night; a proposal's or a cancelled night's hours give way to the bot's.
   // ponytail: min/max merge assumes adjacent hours; non-adjacent bookings would show one wide span.
   const saved = await env.DB.prepare(`
     INSERT INTO sessions (date, status, location, proposed_by, reviewed_by, start_hour, end_hour)
     VALUES (?1, 'confirmed', ?2, 'bot', 'bot', ?3, ?3 + 1)
     ON CONFLICT(date) DO UPDATE SET status = 'confirmed', location = excluded.location, reviewed_by = 'bot',
-      start_hour = MIN(COALESCE(start_hour, excluded.start_hour), excluded.start_hour),
-      end_hour = MAX(COALESCE(end_hour, excluded.end_hour), excluded.end_hour)
+      start_hour = CASE WHEN sessions.status = 'confirmed' THEN MIN(COALESCE(sessions.start_hour, excluded.start_hour), excluded.start_hour) ELSE excluded.start_hour END,
+      end_hour = CASE WHEN sessions.status = 'confirmed' THEN MAX(COALESCE(sessions.end_hour, excluded.end_hour), excluded.end_hour) ELSE excluded.end_hour END
     RETURNING date, start_hour, end_hour
-  `).bind(date, BOT_LOCATION, hour).first();
+  `).bind(date, DEFAULT_COURT, hour).first();
   return json({ date, time: sessionTime(saved.start_hour, saved.end_hour) });
 }
 
@@ -143,15 +171,17 @@ async function handleCalendarApi(request, env, url, fromPages) {
   try { input = await request.json(); } catch { return error('Enter a valid request.', 400); }
   if (url.pathname === '/api/admins') return addAdmin(env.DB, viewer, input?.email);
   if (url.pathname === '/api/name') return saveName(env.DB, viewer, input?.name);
-  const { date, action, location } = input ?? {};
+  const { date, action } = input ?? {};
   if (!isSessionDate(date)) return error('Choose a date.', 400);
   if (sessionEnded(date, pacificClock())) return error('This date has already passed.', 400);
   if ((action === 'propose' || action === 'join') && !viewer.name) return error('Confirm your name first.', 409);
+  if (['approve', 'decline', 'cancel'].includes(action) && !viewer.admins) return error('Only admins can do this.', 403);
 
   switch (action) {
-    case 'propose': return propose(env.DB, viewer, date);
-    case 'approve':
-    case 'decline': return review(env.DB, viewer, date, action, location);
+    case 'propose': return propose(env.DB, viewer, date, input);
+    case 'approve': return approve(env.DB, viewer, date, input);
+    case 'decline': return close(env.DB, viewer, date, 'pending');
+    case 'cancel': return close(env.DB, viewer, date, 'confirmed');
     case 'join':
     case 'leave': return signup(env.DB, viewer, date, action);
     default: return error('Choose a valid schedule action.', 400);

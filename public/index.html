@@ -135,7 +135,13 @@
     </header>
     <form id="proposal-form" class="proposal-form">
       <label>Date <input name="date" type="date" required autofocus></label>
-      <p>Choose a date. The session will show as tentative until approved.</p>
+      <div class="hours">
+        <label>Start <select name="startHour"></select></label>
+        <label>End <select name="endHour"></select></label>
+      </div>
+      <label>Court <input name="location" maxlength="160" required autocomplete="off"></label>
+      <p>Tennis Court 2 is the court with the pickleball nets beside it.</p>
+      <p id="proposal-hint">Choose a date. The session will show as tentative until approved.</p>
       <button class="rules-button" type="submit">Submit proposal</button>
       <p id="proposal-feedback" class="feedback" role="status"></p>
     </form>

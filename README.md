@@ -6,8 +6,9 @@ The public calendar shows Monday through Sunday. Any day can hold an open play s
 
 - **Log in** with a Google account that has a verified UCLA email. Both `@ucla.edu` and the corresponding `@g.ucla.edu` address work. Other Google accounts are turned away, and the old ChatGPT sign-in is gone.
 - The first time you log in, confirm your name (Google's name is filled in). Other players see your first name and last initial, and you can edit it any time from the name button in the header. Signing up and proposing a night need a confirmed name. Names are saved per UCLA mailbox in the `members` table.
-- Select **Propose a night** to add a tentative date. The calendar shows when to check back for confirmation, three days before play.
-- Admins use **Session approvals** to approve a tentative night with its reserved facility and court, or decline the proposal.
+- Select **Propose a night** to add a tentative date with its start and end hour (8 AM to 12 AM, default 6–8 PM) and court (default Sunset Rec Tennis Court 2). The calendar shows when to check back for confirmation, three days before play. A proposed court is visible to admins only until the night is approved.
+- Admins use **Session approvals** to approve a tentative night, correcting its hours and court first if needed, or decline the proposal. Admins see **Post a night** instead of Propose: it confirms the night right away, and it also confirms a date that is pending or cancelled.
+- Admins can press **Cancel night**, then **Yes, cancel this night**, on an upcoming confirmed night. It shows as Cancelled, and its sign-ups are kept but no longer count.
 - Admins can add another UCLA email address from the **Admins** list. The list is visible to admins only.
 - After approval, UCLA users can sign up or cancel their own sign-up from the selected date. The public calendar shows the number of sign-ups.
 
@@ -31,7 +32,7 @@ Picklebot (the court-booking script) tells the site about each tennis court it b
 4. Then run `npm run publish:pages`. The Worker deploy (with its migration) goes first, the Pages publish second.
 5. Give the same token to picklebot with `node picklebot.js save-openplay-token`. Never put the token in a file or in chat.
 
-A bot post always sets that night to Confirmed at `Sunset Rec Tennis Court 2`. It overwrites a location an admin typed, re-confirms a night an admin declined, and sets the hours to the hours the bot booked (a 6 PM booking shows only 6–7 PM until the 7 PM court is booked too).
+A bot post always sets that night to Confirmed at `Sunset Rec Tennis Court 2`. It overwrites a location an admin typed and re-confirms a night an admin declined or cancelled. On a night that is not confirmed yet (a proposal, or a cancelled night), the hours become the hours the bot booked (a 6 PM booking shows only 6–7 PM until the 7 PM court is booked too). On an already confirmed night, including one an admin posted, the booked hour is added to its hours (6–7 PM plus a 7 PM booking shows 6–8 PM).
 
 The endpoint is `POST /api/bot/session` with the header `Authorization: Bearer <token>` and a JSON body like `{ "date": "2026-12-01", "hour": 18 }` (`hour` is the booked hour, 13 to 23). Without the secret set, the endpoint refuses every request.
 

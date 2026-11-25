@@ -145,7 +145,6 @@ test('a name is confirmed once, shown to others as First L., and an edit reaches
   const members = () => request.sqlite.prepare("SELECT COUNT(*) AS n FROM members WHERE email = 'maya@ucla.edu'").get().n;
   const maya = { id: 'maya', email: 'maya@ucla.edu', name: 'Maya Lopez', saved: null };
   const sam = { id: 'sam', email: 'sam@ucla.edu', saved: null };
-  const approval = { date, action: 'approve', location: 'Tennis Court 2' };
   const viewerOf = async who => (await (await request(who)).json()).viewer;
 
   assert.equal((await saveName(undefined, 'Maya Lopez')).status, 401);
@@ -158,7 +157,6 @@ test('a name is confirmed once, shown to others as First L., and an edit reaches
   assert.equal((await viewerOf(sam)).suggestedName, null);
 
   assert.equal((await request(admin, { date, action: 'propose' })).status, 201);
-  assert.equal((await request(admin, approval)).status, 200);
   for (const action of ['join', 'propose']) {
     const refused = await request(maya, { date, action });
     assert.equal(refused.status, 409);
@@ -191,8 +189,97 @@ test('admin actions and the bot never need a saved name', async t => {
   assert.equal((await request(bare, { date, action: 'propose' })).status, 409);
   assert.equal((await request(student, { date, action: 'propose' })).status, 201);
   assert.equal((await request(bare, { date, action: 'approve', location: 'Tennis Court 2' })).status, 200);
+  const later = addDays(date, 1);
+  assert.equal((await request(student, { date: later, action: 'propose' })).status, 201);
+  assert.equal((await request(bare, { date: later, action: 'decline' })).status, 200);
   assert.equal((await request(bare, { email: 'new.admin@ucla.edu' }, origin, { path: '/api/admins' })).status, 200);
   assert.equal(request.sqlite.prepare('SELECT COUNT(*) AS n FROM members WHERE email = ?').get('admin@ucla.edu').n, 0);
+});
+
+test('nights carry hours and a court: students propose, admins post, approve and cancel', async t => {
+  const request = setup(t);
+  const court = 'Sunset Rec Tennis Court 2';
+  const other = { id: 'other', email: 'other@ucla.edu' };
+  const day = offset => addDays(date, offset);
+  const act = (who, offset, body) => request(who, { date: day(offset), ...body });
+  const rows = async who => (await (await request(who)).json()).sessions;
+  const row = async (who, offset) => (await rows(who)).find(session => session.date === day(offset));
+  const stored = offset => request.sqlite.prepare('SELECT * FROM sessions WHERE date = ?').get(day(offset));
+
+  for (const bad of [
+    { startHour: 7 }, { startHour: '18' }, { startHour: 18.5 }, { startHour: null }, { endHour: null }, { startHour: 20, endHour: 20 },
+    { endHour: 25 }, { startHour: 21 }, { endHour: 18 }, { location: '   ' }, { location: 'x'.repeat(161) }, { location: 5 }, { location: null },
+  ]) {
+    assert.equal((await act(student, 1, { action: 'propose', ...bad })).status, 400, JSON.stringify(bad));
+  }
+  assert.deepEqual(await rows(), []);
+
+  assert.equal((await act(student, 1, { action: 'propose', startHour: 19, endHour: 21, location: ' Court 5 ' })).status, 201);
+  const pending = { date: day(1), status: 'pending', signupCount: 0, signedUp: false, time: '7–9 PM' };
+  assert.deepEqual(await row(undefined, 1), pending);
+  assert.deepEqual(await row(other, 1), pending);
+  assert.deepEqual(await row(student, 1), pending);
+  assert.deepEqual(await row(admin, 1), { ...pending, location: 'Court 5', startHour: 19, endHour: 21 });
+  assert.equal((await act(student, 1, { action: 'propose' })).status, 409);
+
+  assert.equal((await act(admin, 1, { action: 'approve', startHour: 21 })).status, 400);
+  assert.equal((await act(admin, 1, { action: 'approve', startHour: 18, endHour: 20, location: court })).status, 200);
+  assert.deepEqual(await row(undefined, 1), { date: day(1), status: 'confirmed', location: court, signupCount: 0, signedUp: false, time: '6–8 PM' });
+  assert.equal((await act(admin, 1, { action: 'propose' })).status, 409);
+  assert.equal((await act(student, 1, { action: 'propose' })).status, 409);
+
+  // A request that only names the date and court (the old front end) keeps the proposal's hours.
+  assert.equal((await act(student, 2, { action: 'propose', startHour: 19, endHour: 21 })).status, 201);
+  assert.equal((await act(admin, 2, { action: 'approve', location: 'Court 2' })).status, 200);
+  assert.equal((await row(admin, 2)).time, '7–9 PM');
+  assert.equal((await act(student, 3, { action: 'propose' })).status, 201);
+  request.sqlite.prepare('UPDATE sessions SET location = NULL WHERE date = ?').run(day(3));
+  assert.equal((await act(admin, 3, { action: 'approve' })).status, 400);
+  assert.equal((await act(admin, 3, { action: 'approve', location: ' ' })).status, 400);
+
+  // Admins post straight to confirmed, and re-post over a pending or cancelled date.
+  assert.equal((await act(admin, 4, { action: 'propose', startHour: 18, endHour: 19, location: 'Court 9' })).status, 201);
+  assert.deepEqual(await row(undefined, 4), { date: day(4), status: 'confirmed', location: 'Court 9', signupCount: 0, signedUp: false, time: '6–7 PM' });
+  assert.equal(stored(4).reviewed_by, 'google:organizer');
+  assert.equal((await act(admin, 4, { action: 'propose' })).status, 409);
+  assert.equal((await act(admin, 3, { action: 'propose', startHour: 17, endHour: 19, location: 'Court 3' })).status, 201);
+  assert.deepEqual(await row(undefined, 3), { date: day(3), status: 'confirmed', location: 'Court 3', signupCount: 0, signedUp: false, time: '5–7 PM' });
+  assert.deepEqual([stored(3).proposed_by, stored(3).reviewed_by], ['google:student', 'google:organizer']);
+  assert.equal((await act(admin, 5, { action: 'propose' })).status, 201);
+  assert.equal((await act(admin, 5, { action: 'cancel' })).status, 200);
+  assert.equal((await act(admin, 5, { action: 'propose', location: 'Court 4' })).status, 201);
+  assert.equal((await row(undefined, 5)).location, 'Court 4');
+
+  // Cancelling: admins only, only a confirmed upcoming night; sign-ups stay but stop counting.
+  assert.equal((await act(student, 4, { action: 'join' })).status, 201);
+  assert.equal((await act(student, 4, { action: 'cancel' })).status, 403);
+  assert.equal((await act(undefined, 4, { action: 'cancel' })).status, 401);
+  assert.equal((await act(admin, 4, { action: 'cancel' })).status, 200);
+  assert.deepEqual(await row(student, 4), { date: day(4), status: 'cancelled', signupCount: 0, signedUp: false, time: '6–7 PM' });
+  assert.equal(stored(4).location, null);
+  assert.equal(request.sqlite.prepare('SELECT COUNT(*) AS n FROM signups WHERE date = ?').get(day(4)).n, 1);
+  assert.equal((await act(admin, 4, { action: 'cancel' })).status, 409);
+  assert.equal((await act(student, 4, { action: 'join' })).status, 409);
+  assert.equal((await act(admin, 6, { action: 'cancel' })).status, 409);
+  assert.equal((await request(admin, { date: '2020-01-01', action: 'cancel' })).status, 400);
+});
+
+test('the bot takes its own hours unless an admin-confirmed night already has some', async t => {
+  const token = 'bot-secret-token';
+  const request = setup(t, { OPEN_PLAY_BOT_TOKEN: token });
+  const bot = (offset, hour) => request({}, { date: addDays(date, offset), hour }, null, { path: '/api/bot/session', token }).then(response => response.json());
+  const act = (who, offset, body) => request(who, { date: addDays(date, offset), ...body });
+
+  await act(student, 0, { action: 'propose', startHour: 18, endHour: 20 });
+  assert.equal((await bot(0, 19)).time, '7–8 PM');
+  await act(admin, 1, { action: 'propose', startHour: 18, endHour: 20 });
+  await act(admin, 1, { action: 'cancel' });
+  assert.equal((await bot(1, 18)).time, '6–7 PM');
+  await act(admin, 2, { action: 'propose', startHour: 18, endHour: 19 });
+  assert.equal((await bot(2, 19)).time, '6–8 PM');
+  request.sqlite.prepare("INSERT INTO sessions (date, status, location, proposed_by) VALUES (?, 'confirmed', 'Court 1', 'x')").run(addDays(date, 3));
+  assert.equal((await bot(3, 19)).time, '7–8 PM');
+  assert.equal((await (await request()).json()).sessions.find(session => session.date === addDays(date, 0)).location, 'Sunset Rec Tennis Court 2');
 });
 
 test('GitHub Pages redeems a one-time code from a Google sign-in and uses a separately revocable 90-day API session', async t => {
@@ -235,7 +322,6 @@ test('GitHub Pages redeems a one-time code from a Google sign-in and uses a sepa
   assert.equal((await request({}, proposal, pagesOrigin, { token })).status, 201);
   const signedIn = await (await request({}, undefined, pagesOrigin, { token })).json();
   assert.deepEqual(signedIn.viewer.admins, ['admin@ucla.edu']);
-  assert.equal((await request({}, { date, action: 'approve', location: 'Tennis Court 2' }, pagesOrigin, { token })).status, 200);
   assert.equal((await request({}, { date, action: 'join' }, pagesOrigin, { token })).status, 201);
   assert.equal((await request({}, {}, pagesOrigin, { path: '/api/pages/logout', token })).status, 200);
   assert.equal((await request({}, { date, action: 'leave' }, pagesOrigin, { token })).status, 401);
@@ -261,7 +347,7 @@ test('admins can grant another verified UCLA address access without disclosing t
   assert.deepEqual(await (await request(admin, { email: 'Player@g.ucla.edu' }, origin, path)).json(), { email: student.email });
   assert.equal((await request(admin, { email: student.email }, origin, path)).status, 200);
   assert.equal((await request(student, proposal)).status, 201);
-  assert.equal((await request(student, { date, action: 'approve', location: 'Tennis Court 2' })).status, 200);
+  assert.equal((await request(student, { date, action: 'cancel' })).status, 200);
   assert.deepEqual((await (await request(student)).json()).viewer.admins, ['admin@ucla.edu', 'player@ucla.edu']);
   const nonAdmin = { id: 'teammate', email: 'teammate@ucla.edu' };
   assert.equal((await (await request(nonAdmin)).json()).viewer.admins, null);
@@ -373,7 +459,6 @@ test('Google login posts a signed ID token back with no client secret; every fai
   assert.equal((await post({ ...host, path: '/api/name' }, { name: 'Host Admin' })).status, 200);
   assert.equal((await post({ ...maya, path: '/api/name' }, { name: 'Maya Lopez' })).status, 200);
   assert.equal((await post(host, { date, action: 'propose' })).status, 201);
-  assert.equal((await post(host, { date, action: 'approve', location: 'Tennis Court 2' })).status, 200);
   assert.equal((await post(maya, { date, action: 'join' })).status, 201);
   assert.deepEqual((await (await request({}, undefined, origin, maya)).json()).sessions[0].players, ['Maya L.']);
 });

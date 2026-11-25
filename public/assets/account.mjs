@@ -11,6 +11,8 @@ let viewer = {};
 let prompted = false;
 let saved = false;
 
+export const hasName = () => Boolean(viewer.name);
+
 // Opens the name dialog; resolves true once a name is saved, false if it is closed without saving.
 export function askName() {
   saved = false;
@@ -48,7 +50,9 @@ nameButton.addEventListener('click', askName);
 window.addEventListener('openplay-schedule', event => {
   viewer = event.detail.viewer;
   nameButton.hidden = !viewer.name;
-  nameButton.textContent = viewer.name ? displayName(viewer.name, '') : '';
+  const shown = viewer.name ? displayName(viewer.name, '') : '';
+  nameButton.textContent = shown;
+  nameButton.setAttribute('aria-label', `Edit your name, ${shown}`);
   if (viewer.member && !viewer.name && !prompted) {
     prompted = true;
     askName();

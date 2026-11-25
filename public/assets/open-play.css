@@ -150,7 +150,7 @@ body:has(.rules-dialog[open]) { overflow: hidden; }
 .rules-list section + section { border-top: 1px solid var(--line); }
 .rules-list h3 { margin-bottom: .2rem; color: var(--navy); font-size: 1.25rem; }
 .rules-list p { color: var(--muted); }
-.signup-button, .signup-login { justify-self: start; margin-top: .3rem; }
+.signup-button, .signup-login, .cancel-night { justify-self: start; margin-top: .3rem; }
 .signup-login { color: var(--blue-dark); font-weight: 700; }
 .feedback:not(:empty) { margin-bottom: .7rem; font-weight: 600; color: var(--blue-dark); }
 .approval-panel { display: grid; grid-template-columns: minmax(11rem, 1fr) minmax(0, 2fr); gap: 1.25rem; padding: 1.15rem; }
@@ -164,8 +164,10 @@ body:has(.rules-dialog[open]) { overflow: hidden; }
 .proposal-form { display: grid; justify-items: start; gap: .8rem; padding: 1.2rem 1.4rem; }
 .proposal-form p, .approval-list p { color: var(--muted); }
 .proposal-form label, .approval-list label, .admin-form label { display: grid; gap: .3rem; font-weight: 600; }
-.proposal-form input, .approval-list input, .admin-form input { min-height: 2.75rem; max-width: 100%; padding: .45rem .6rem; border: 1px solid #98adc1; border-radius: .45rem; background: var(--white); font: inherit; color: var(--ink); }
-.approval-list input, .admin-form input { width: 100%; min-width: 0; }
+.proposal-form input, .proposal-form select, .approval-list input, .approval-list select, .admin-form input { min-height: 2.75rem; max-width: 100%; padding: .45rem .6rem; border: 1px solid #98adc1; border-radius: .45rem; background: var(--white); font: inherit; color: var(--ink); }
+.proposal-form input, .proposal-form select, .approval-list input, .approval-list select, .admin-form input { width: 100%; min-width: 0; }
+.proposal-form label, .proposal-form .hours { width: 100%; }
+.hours { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; }
 button:disabled { opacity: .65; }
 .site-footer { background: var(--navy); color: var(--white); padding: 1.2rem 0; font-size: .9375rem; font-weight: 600; }
 

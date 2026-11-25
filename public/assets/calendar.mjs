@@ -1,5 +1,5 @@
 import {
-  DAYS_PER_WEEK, RESERVATION_LEAD_DAYS, SESSION_TIME,
+  DAYS_PER_WEEK, RESERVATION_LEAD_DAYS,
   pacificClock, civilDate, addDays, currentWeek, isCalendarDate, readSessions, calendarStatus, sessionEnded,
 } from './schedule.mjs';
 import { askName } from './account.mjs';
@@ -97,11 +97,12 @@ function renderDetail() {
     const time = element('strong', session.time);
     detail.append(time, location);
     renderSignup(session);
+    if (viewer.admins && !sessionEnded(session.date, clock)) renderCancel(session);
   } else if (status.note) {
     detail.append(element('p', status.note));
   } else if (status.style === 'pending') {
     const checkDate = addDays(selectedDate, -RESERVATION_LEAD_DAYS);
-    const time = element('strong', SESSION_TIME);
+    const time = element('strong', session.time);
     const message = checkDate > clock.date
       ? `Check back ${shortDate.format(civilDate(checkDate))} for the reservation status.`
       : 'We’re waiting for an admin to approve this session.';
@@ -160,6 +161,31 @@ function renderSignup(session) {
     } catch (error) {
       feedback.textContent = error.message;
     } finally {
+      button.disabled = false;
+    }
+  });
+  detail.append(button);
+}
+
+// Two presses: the first arms the button (any re-render, such as moving to another date, disarms it), the second cancels.
+function renderCancel(session) {
+  const button = element('button', 'Cancel night', 'rules-close cancel-night');
+  let armed = false;
+  button.type = 'button';
+  button.addEventListener('click', async () => {
+    if (!armed) {
+      armed = true;
+      button.textContent = 'Yes, cancel this night';
+      return;
+    }
+    button.disabled = true;
+    feedback.textContent = '';
+    try {
+      await updateSchedule({ date: session.date, action: 'cancel' });
+      await refresh({ afterCurrent: true });
+      feedback.textContent = 'Night cancelled.';
+    } catch (error) {
+      feedback.textContent = error.message;
       button.disabled = false;
     }
   });

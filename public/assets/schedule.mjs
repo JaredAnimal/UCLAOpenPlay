@@ -3,6 +3,7 @@ const MONDAY = 1;
 export const DAYS_PER_WEEK = 7;
 export const RESERVATION_LEAD_DAYS = 3;
 export const SESSION_TIME = '6–8 PM';
+export const DEFAULT_COURT = 'Sunset Rec Tennis Court 2';
 const TENTATIVE_RESERVATION = { label: 'Tentative', style: 'pending' };
 
 const localClock = new Intl.DateTimeFormat('en-CA', {
@@ -50,6 +51,16 @@ function hourLabel(hour) {
   return { hour: hour % 12 || 12, meridiem: hour % 24 < 12 ? 'AM' : 'PM' };
 }
 
+export function hourText(hour) {
+  const { hour: number, meridiem } = hourLabel(hour);
+  return `${number} ${meridiem}`;
+}
+
+// Whole hours from 8 AM to midnight (24), with the end after the start.
+export function validHours(start, end) {
+  return Number.isInteger(start) && Number.isInteger(end) && start >= 8 && start < end && end <= 24;
+}
+
 export function sessionTime(startHour, endHour) {
   if (!Number.isInteger(startHour) || !Number.isInteger(endHour)) return SESSION_TIME;
   const start = hourLabel(startHour);
@@ -85,7 +96,7 @@ export function readSessions(data) {
 
   const sessions = new Map();
   for (const row of data) {
-    const { date, status, location, note, signupCount, signedUp, time, players } = row ?? {};
+    const { date, status, location, note, signupCount, signedUp, time, players, startHour, endHour } = row ?? {};
     if (!isCalendarDate(date)) {
       throw new Error(`Invalid session date: ${date ?? '(missing)'}`);
     }
@@ -97,6 +108,7 @@ export function readSessions(data) {
     if (status === 'confirmed' && !location) throw new Error(`Enter the reserved court for ${date}.`);
     if (note !== undefined && typeof note !== 'string') throw new Error(`Invalid session note for ${date}.`);
     sessions.set(date, { date, status, location: location?.trim(), note: note?.trim(), signupCount: signupCount ?? 0, signedUp: signedUp === true,
+      startHour: Number.isInteger(startHour) ? startHour : undefined, endHour: Number.isInteger(endHour) ? endHour : undefined,
       time: typeof time === 'string' && time.trim() ? time.trim() : SESSION_TIME,
       players: Array.isArray(players) ? players.filter(name => typeof name === 'string') : [] });
   }
